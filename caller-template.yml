@@ -1,6 +1,7 @@
 name: Puppets
 
 on:
+  # Stagger the minute across repositories to spread API and model traffic.
   schedule:
     - cron: "0 16 * * *"
   workflow_dispatch:
@@ -16,6 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  # The reusable workflow cannot elevate beyond these caller-granted permissions.
   actions: write
   contents: read
   issues: write
@@ -24,10 +26,12 @@ permissions:
 
 jobs:
   reconcile:
+    # Pin to a reviewed immutable commit. Replace both placeholders with the same SHA.
     uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_COMMIT_SHA
     with:
       framework_ref: FRAMEWORK_COMMIT_SHA
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:
+      # Optional: add only if GITHUB_TOKEN cannot assign the Copilot coding agent.
       token: ${{ secrets.PUPPETS_TOKEN }}

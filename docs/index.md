@@ -11,7 +11,7 @@ title: Puppets
       reviewed pull requests without a central controller reaching into your repositories.
     </p>
     <div class="puppets-actions">
-      <a class="puppets-button" href="architecture.html">Explore the architecture</a>
+      <a class="puppets-button" href="getting-started.html">Install Puppets</a>
       <a class="puppets-button secondary" href="https://github.com/JeffSteinbok/puppets">View on GitHub</a>
     </div>
   </div>
@@ -164,6 +164,10 @@ This keeps domain-specific triggers and security rules beside the repository the
 ## Go deeper
 
 <div class="puppets-grid">
+  <a class="puppets-card puppets-link-card" href="getting-started.html">
+    <strong>Getting started</strong>
+    <span>Complete caller workflow, permissions, credentials, dry run, and upgrade process.</span>
+  </a>
   <a class="puppets-card puppets-link-card" href="architecture.html">
     <strong>Architecture</strong>
     <span>Caller context, reusable workflow packaging, credentials, and state ownership.</span>

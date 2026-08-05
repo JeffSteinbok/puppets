@@ -5,6 +5,7 @@ repository: JeffSteinbok/puppets
 url: https://jeffsteinbok.github.io
 baseurl: /puppets
 header_pages:
+  - getting-started.md
   - architecture.md
   - configuration.md
   - security.md

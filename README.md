@@ -35,8 +35,9 @@ immutable commit SHA.
    perform Copilot assignment.
 5. Run the workflow manually with `dry_run: true`.
 
-See the [documentation site](https://JeffSteinbok.github.io/puppets/) for configuration,
-security, overrides, migration, and extension guidance.
+See the [complete getting-started guide](https://JeffSteinbok.github.io/puppets/getting-started.html)
+for the documented caller workflow, permissions, credentials, dry-run rollout, upgrades,
+configuration, and repository-owned process integration.
 
 ## Development
 
