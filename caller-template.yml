@@ -1,0 +1,32 @@
+name: Puppets
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report intended mutations without applying them
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: puppets-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+  copilot-requests: write
+
+jobs:
+  reconcile:
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_COMMIT_SHA
+    with:
+      dry_run: ${{ inputs.dry_run || false }}
+      caller_workflow: puppets.yml
+    secrets:
+      token: ${{ secrets.PUPPETS_TOKEN }}

@@ -1,0 +1,4 @@
+node_modules/
+.puppets-caller/
+.puppets-framework/
+.puppets-resolved/
