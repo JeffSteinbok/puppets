@@ -84,7 +84,7 @@ Each managed repository checks in:
 
 ```text
 .github/workflows/puppets.yml
-.github/puppets/
+.puppets/
   config.json
   lifecycle.json       # optional overlay
   prompts/             # optional replacements
@@ -147,7 +147,7 @@ This keeps domain-specific triggers and security rules beside the repository the
    [caller template](https://github.com/JeffSteinbok/puppets/blob/main/caller-template.yml)
    to `.github/workflows/puppets.yml`.
 2. Replace `FRAMEWORK_COMMIT_SHA` in both locations with the same immutable Puppets commit.
-3. Add `.github/puppets/config.json`:
+3. Add `.puppets/config.json`:
 
    ```json
    {

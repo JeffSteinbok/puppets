@@ -10,7 +10,7 @@ that policy only from the repository's trusted default branch.
 
 ## Minimum configuration
 
-Create `.github/puppets/config.json`:
+Create `.puppets/config.json`:
 
 ```json
 {
@@ -64,7 +64,7 @@ assignment, and pull-request reconciliation.
 
 ## Lifecycle overlay
 
-`.github/puppets/lifecycle.json` overlays the framework lifecycle by object key. Arrays
+`.puppets/lifecycle.json` overlays the framework lifecycle by object key. Arrays
 replace the default array at that key. Protected state labels and `puppets:no-auto` cannot
 be removed or renamed.
 
@@ -86,11 +86,11 @@ versions, and changes to protected state labels.
 
 ## Prompt replacement
 
-A Markdown file under `.github/puppets/prompts/` replaces the framework prompt with the same
+A Markdown file under `.puppets/prompts/` replaces the framework prompt with the same
 name. Prompt files are capped at 20 KB and read only from the trusted default branch.
 
 ```text
-.github/puppets/prompts/
+.puppets/prompts/
   curation.md
   implementation.md
   acceptance-review.md

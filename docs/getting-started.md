@@ -90,7 +90,7 @@ Do not add broader permissions unless a specific enabled feature requires them.
 
 ## 3. Add repository policy
 
-Create `.github/puppets/config.json`:
+Create `.puppets/config.json`:
 
 ```json
 {
@@ -185,4 +185,4 @@ upgrading the shared runtime does not migrate an external database.
 
 - [Canonical caller template](https://github.com/JeffSteinbok/puppets/blob/main/caller-template.yml)
 - [Live `obsidian-onedrive` caller](https://github.com/JeffSteinbok/obsidian-onedrive/blob/main/.github/workflows/puppets.yml)
-- [Live pilot configuration](https://github.com/JeffSteinbok/obsidian-onedrive/blob/main/.github/puppets/config.json)
+- [Live pilot configuration](https://github.com/JeffSteinbok/obsidian-onedrive/blob/main/.puppets/config.json)

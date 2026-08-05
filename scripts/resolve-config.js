@@ -21,7 +21,7 @@ fs.writeFileSync(
 
 for (const entry of fs.readdirSync(path.join(frameworkRoot, 'prompts'))) {
   if (!entry.endsWith('.md')) continue;
-  const local = path.join(callerRoot, '.github', 'puppets', 'prompts', entry);
+  const local =   path.join(callerRoot, '.puppets', 'prompts', entry);
   const source = fs.existsSync(local) ? local : path.join(frameworkRoot, 'prompts', entry);
   const content = fs.readFileSync(source, 'utf8');
   if (Buffer.byteLength(content, 'utf8') > 20000) {

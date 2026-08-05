@@ -22,7 +22,7 @@ immutable commit SHA.
 2. Replace `FRAMEWORK_COMMIT_SHA` with an immutable commit from this repository.
    The same SHA appears in both the workflow `uses` reference and its `framework_ref`
    input so the called workflow can securely check out its packaged runtime.
-3. Add `.github/puppets/config.json`:
+3. Add `.puppets/config.json`:
 
    ```json
    {

@@ -331,16 +331,21 @@ code {
 .code-panel {
   position: relative;
   margin: 1.25rem 0 1.75rem;
+  border: 1px solid var(--puppets-border);
+  border-radius: 12px;
+  background: #0b0b13;
+  overflow: hidden;
 }
 
+.highlighter-rouge,
 .highlighter-rouge .highlight,
 .highlight,
 pre,
 pre.highlight {
   color: var(--puppets-text);
-  border: 1px solid var(--puppets-border);
-  border-radius: 12px;
-  background: #0b0b13;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .highlighter-rouge .highlight {

@@ -9,7 +9,7 @@
  * context, and the Actions core helpers).
  *
  * State lives entirely in GitHub labels (`puppets:*`). The controller-owned
- * `.github/puppets/lifecycle.json` declares the states, label metadata, in-flight
+ * `config/lifecycle.json` declares the default states, label metadata, in-flight
  * accounting, PR projection, and allowed transitions. Procedural guards remain here.
  *
  * Lifecycle (one active label at a time):
@@ -165,7 +165,7 @@ module.exports = async ({ github, context, core }) => {
   // ── Prompts & messages (kept out of this file) ──
   // Every piece of prose the engine emits — the LLM prompts it hands to Copilot for the
   // implementation and review steps, the conflict-remediation directive, and the
-  // author-facing messages — lives under .github/puppets/prompts/ so the wording can be
+  // author-facing messages live under the resolved prompts directory so the wording can be
   // edited without touching engine logic. They are read from the controller checkout; a
   // missing file degrades gracefully to empty text (that step simply posts nothing).
   const promptsDir = process.env.PUPPETS_PROMPTS_DIR || 'prompts';
@@ -375,12 +375,12 @@ module.exports = async ({ github, context, core }) => {
     }
   }
 
-  // Read a managed repo's optional per-step guidance file (.github/puppets/<step>.md) from
+  // Read a managed repo's optional per-step guidance file (.puppets/<step>.md) from
   // its default branch. This is the trusted, repo-owned augmentation to the base prompt.
   // Returns null when absent (404); throws on a present-but-invalid file so the caller can
   // skip that repo rather than guess. Capped at 20 KB.
   async function readStepInstructions(repo, defaultBranch, step) {
-    const path = `.github/puppets/${step}.md`;
+    const path = `.puppets/${step}.md`;
     try {
       const response = await github.rest.repos.getContent({
         owner, repo, path, ref: defaultBranch,
@@ -402,7 +402,7 @@ module.exports = async ({ github, context, core }) => {
   }
 
   // Post (or update, keyed off `marker`) the trusted instruction comment for a step. The
-  // body is the base prompt for that step (from .github/puppets/prompts/<step>.md) followed
+  // body is the resolved base prompt for that step followed
   // by the managed repo's optional per-repo guidance, clearly attributed to its source file.
   // Idempotent: the hidden marker lets repeated runs update one comment instead of stacking.
   async function upsertStepInstructions(step, marker, heading, repo, targetNumber, subjectNodeId, defaultBranch, perRepo) {

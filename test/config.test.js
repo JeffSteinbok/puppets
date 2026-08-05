@@ -37,13 +37,13 @@ test('local configuration and lifecycle metadata are resolved', () => {
   const frameworkRoot = path.join(root, 'framework');
   const callerRoot = path.join(root, 'caller');
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
-  fs.mkdirSync(path.join(callerRoot, '.github', 'puppets'), { recursive: true });
+  fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
     path.join(frameworkRoot, 'config', 'lifecycle.json'),
     JSON.stringify(lifecycle)
   );
   fs.writeFileSync(
-    path.join(callerRoot, '.github', 'puppets', 'config.json'),
+    path.join(callerRoot, '.puppets', 'config.json'),
     JSON.stringify({
       version: 1,
       approvalActors: ['JeffSteinbok'],
@@ -51,7 +51,7 @@ test('local configuration and lifecycle metadata are resolved', () => {
     })
   );
   fs.writeFileSync(
-    path.join(callerRoot, '.github', 'puppets', 'lifecycle.json'),
+    path.join(callerRoot, '.puppets', 'lifecycle.json'),
     JSON.stringify({ states: { ready: { color: '123456' } } })
   );
 
@@ -66,13 +66,13 @@ test('unknown local configuration fails closed', () => {
   const frameworkRoot = path.join(root, 'framework');
   const callerRoot = path.join(root, 'caller');
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
-  fs.mkdirSync(path.join(callerRoot, '.github', 'puppets'), { recursive: true });
+  fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
     path.join(frameworkRoot, 'config', 'lifecycle.json'),
     JSON.stringify(lifecycle)
   );
   fs.writeFileSync(
-    path.join(callerRoot, '.github', 'puppets', 'config.json'),
+    path.join(callerRoot, '.puppets', 'config.json'),
     JSON.stringify({
       version: 1,
       approvalActors: ['JeffSteinbok'],
