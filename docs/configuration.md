@@ -62,8 +62,8 @@ assignment, and pull-request reconciliation.
 
 ## Workflow DSL
 
-Puppets compiles a versioned, Goobers-style workflow definition before it performs any
-mutation. The built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml)
+Puppets compiles a versioned workflow definition before it performs any mutation. The
+built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml)
 declares named stages, handler kinds, outcome branches, labels, and profiles.
 
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
