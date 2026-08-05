@@ -3,31 +3,36 @@ layout: default
 title: Postmortem integration
 ---
 
-# Postmortem and repository-owned process integration
+# Postmortem integration
 
-Puppets supports repository-specific automation without absorbing every process into the
-generic lifecycle.
+Puppets can run postmortem hardening work through the same approved issue-to-PR lifecycle.
+The repository keeps the domain-specific trigger; Puppets owns assignment and lifecycle
+reconciliation.
 
-For `obsidian-onedrive`, the existing postmortem process remains repository-owned:
+## How it works
 
 1. A merged bug-fix pull request creates a postmortem tracking issue.
-2. The repository assigns Copilot using its local postmortem skill.
-3. Copilot opens a hardening pull request.
-4. Local guard and publish workflows validate the writeup and mirror it to the issue.
+2. The trigger labels the issue `postmortem` but does not assign Copilot.
+3. A trusted maintainer applies `puppets:approved`.
+4. Puppets bypasses generic curation and assigns Copilot with the postmortem prompt.
+5. Copilot opens a hardening pull request.
+6. Repository-owned guard and publishing workflows can validate the writeup and mirror it
+   to the tracking issue.
 
-The local Puppets configuration includes `"ignoreLabels": ["postmortem"]`, and newly
-created postmortem issues also receive `puppets:no-auto`. This prevents Puppets from
-triaging, assigning, or reconciling the same work while preserving the existing process,
-markers, branch naming, and security controls.
+Postmortems retain the normal Puppets trust gate: no model or coding-agent assignment
+occurs before verified human approval.
 
-This is the extension contract for similar repository-owned processes:
+## Optional repository prompt
 
-- detection and domain-specific triggers stay in the managed repository;
-- the local process labels its tracking issue with `puppets:no-auto`, or declares a stable
-  label in `ignoreLabels`;
-- `pull_request_target` workflows remain metadata-only and never check out untrusted head
-  code with write credentials; and
-- idempotency markers remain owned by the local process.
+Puppets provides a generic postmortem prompt. Replace it for a repository by creating:
 
-Future shared postmortem helpers may live in this public repository, but callers must opt in
-explicitly and remain the source of triggers and permissions.
+```text
+.puppets/prompts/postmortem.md
+```
+
+The prompt is loaded only from the caller's trusted default branch. It can define local
+build commands, required analysis format, branch naming, PR markers, and guard-workflow
+expectations.
+
+Repositories that do not want Puppets to process a particular postmortem can still apply
+`puppets:no-auto`.

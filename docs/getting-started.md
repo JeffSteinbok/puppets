@@ -9,16 +9,18 @@ Onboarding requires one lightweight workflow, one local configuration file, and 
 one repository-scoped token. The lifecycle implementation remains in the public Puppets
 framework.
 
-## 1. Choose an immutable framework revision
+## 1. Choose a framework revision
 
-Production callers must use a full 40-character commit SHA, never `main` or a movable tag.
+Use a release tag such as `v1` for simple upgrades, or a full 40-character commit SHA when
+you want strict, reviewable pinning. Avoid `main`, because it changes without an explicit
+caller update.
 
 ```console
 gh api repos/JeffSteinbok/puppets/commits/main --jq .sha
 ```
 
-Review that commit and copy the resulting SHA. Use the exact same value in both marked
-locations in the workflow below.
+The command above retrieves the current commit SHA if you choose strict pinning. Use the
+exact same tag or SHA in both marked locations in the workflow below.
 
 ## 2. Add the caller workflow
 
@@ -52,16 +54,17 @@ concurrency:
 permissions:
   actions: write
   contents: read
+  # Allows Puppets to identify the exact commit behind its tag or SHA reference.
+  id-token: write
   issues: write
   pull-requests: write
   copilot-requests: write
 
 jobs:
   reconcile:
-    # Replace both occurrences with the same reviewed 40-character commit SHA.
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_COMMIT_SHA
+    # Use a release tag such as v1 for convenience, or a full commit SHA for strict pinning.
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
     with:
-      framework_ref: FRAMEWORK_COMMIT_SHA
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:
@@ -70,17 +73,15 @@ jobs:
       token: ${{ secrets.PUPPETS_TOKEN }}
 ```
 
-### Why the SHA appears twice
-
-GitHub exposes the caller workflow reference from inside a reusable workflow. The explicit
-`framework_ref` lets Puppets securely check out the exact framework revision that the
-caller selected. The reusable workflow rejects anything that is not a full commit SHA.
+Puppets reads GitHub's signed OIDC `job_workflow_sha` claim to check out the exact commit
+behind the single `uses` reference. This works for both release tags and commit SHAs.
 
 ### Why each permission exists
 
 | Permission | Used for |
 |---|---|
 | `contents: read` | Read trusted caller configuration and prompts from the default branch. |
+| `id-token: write` | Read GitHub's signed reusable-workflow commit claim. |
 | `issues: write` | Reconcile labels, comments, assignments, and issue state. |
 | `pull-requests: write` | Track linked PRs, update branches, and maintain projected state. |
 | `actions: write` | Re-run Copilot-authored workflow runs left in `action_required`. |

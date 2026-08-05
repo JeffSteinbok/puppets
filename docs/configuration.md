@@ -93,6 +93,7 @@ name. Prompt files are capped at 20 KB and read only from the trusted default br
 .puppets/prompts/
   curation.md
   implementation.md
+  postmortem.md
   acceptance-review.md
   remediation.md
 ```
@@ -100,3 +101,7 @@ name. Prompt files are capped at 20 KB and read only from the trusted default br
 Use prompt replacement for repository conventions, validation commands, generated files,
 or domain-specific acceptance evidence. Security rules remain in runtime code and cannot be
 replaced by a prompt.
+
+When an approved issue has the `postmortem` label, Puppets skips generic curation and uses
+`postmortem.md` for the coding-agent assignment. The framework supplies a default; checking
+in `.puppets/prompts/postmortem.md` replaces it for that repository.

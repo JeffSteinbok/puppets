@@ -91,9 +91,9 @@ Each managed repository checks in:
 ```
 
 The caller workflow owns triggers, concurrency, explicit permissions, and local secrets. It
-calls this public framework at an immutable commit SHA. The framework owns the reusable
-workflow, runtime, default lifecycle, prompts, configuration validation, and regression
-tests.
+calls this public framework at an explicit release tag or commit SHA. The framework owns
+the reusable workflow, runtime, default lifecycle, prompts, configuration validation, and
+regression tests.
 
 There is no central repository list, no inbound webhook, and no broad token reaching into a
 troupe of repositories.
@@ -128,25 +128,25 @@ Configuration cannot weaken these runtime invariants:
 - unknown transitions and invalid configuration are rejected before mutation; and
 - uncertain output or retry exhaustion escalates to a human.
 
-## Local processes can coexist
+## Postmortem automation
 
-Puppets does not need to absorb every repository-specific workflow. The
-`obsidian-onedrive` pilot keeps its existing bug-fix postmortem process:
+The `obsidian-onedrive` pilot uses Puppets for approved bug-fix postmortems:
 
 - a merged bug-fix PR opens a local postmortem issue;
-- the local postmortem skill asks Copilot for a 5-Whys analysis and hardening PR;
-- repository-owned guard and publishing workflows validate and mirror the writeup; and
-- postmortem issues receive `puppets:no-auto` and are also excluded through
-  `ignoreLabels`.
+- a maintainer approves the issue through the normal Puppets trust gate;
+- Puppets assigns Copilot using the repository's optional postmortem prompt; and
+- repository-owned guard and publishing workflows validate and mirror the writeup.
 
-This keeps domain-specific triggers and security rules beside the repository they govern.
+This keeps domain-specific triggers and security rules beside the repository they govern
+while sharing assignment and lifecycle reconciliation.
 
 ## Install in a repository
 
 1. Copy the
    [caller template](https://github.com/JeffSteinbok/puppets/blob/main/caller-template.yml)
    to `.github/workflows/puppets.yml`.
-2. Replace `FRAMEWORK_COMMIT_SHA` in both locations with the same immutable Puppets commit.
+2. Replace `FRAMEWORK_REF` with a release tag such as `v1`, or a full commit SHA for
+   strict pinning.
 3. Add `.puppets/config.json`:
 
    ```json

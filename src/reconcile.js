@@ -182,6 +182,7 @@ module.exports = async ({ github, context, core }) => {
     template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? values[key] : match));
   const prompts = {
     implementation: loadPrompt('implementation'),
+    postmortem: loadPrompt('postmortem'),
     review: loadPrompt('review'),
     acceptanceReview: loadPrompt('acceptance-review'),
     conflict: loadPrompt('conflict'),
@@ -228,6 +229,15 @@ module.exports = async ({ github, context, core }) => {
   );
   const isIgnored = labels =>
     labels.has('puppets:no-auto') || [...ignoredLabels].some(label => labels.has(label));
+  const implementationProfile = labels => labels.has('postmortem') && prompts.postmortem
+    ? {
+        step: 'postmortem',
+        heading: 'Puppets postmortem instructions',
+      }
+    : {
+        step: 'implementation',
+        heading: 'Puppets implementation instructions',
+      };
   const trackedStates = new Map();
   const trackedLabels = new Map();
   const itemKey = (repo, issue) => `${repo}:${issue.node_id || issue.number}`;
@@ -1453,21 +1463,29 @@ module.exports = async ({ github, context, core }) => {
           continue;
         }
 
-        // M1 parity mode: skip curation and assign Copilot directly.
-        if (process.env.ENABLE_CURATION === 'false') {
+        // Postmortems already describe a merged fix and use a dedicated implementation
+        // profile, so generic issue curation adds no value. They still require the same
+        // verified human approval as every other Puppets assignment.
+        const postmortem = labels.has('postmortem');
+        if (process.env.ENABLE_CURATION === 'false' || postmortem) {
           if (assignedInRepo >= maxPerRepo) continue;
           if (inFlightCount + assignedInRepo >= maxInFlightPerRepo) {
             console.log(`#${issue.number}: in-flight cap reached (${maxInFlightPerRepo})`);
             continue;
           }
-          console.log(`#${issue.number}: approved by ${approval.actor} (curation disabled)`);
+          console.log(
+            `#${issue.number}: approved by ${approval.actor} ` +
+            `(${postmortem ? 'postmortem profile' : 'curation disabled'})`
+          );
           const alreadyAssigned = (issue.assignees || []).some(assignee =>
             ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
           );
           if (!alreadyAssigned) {
+            const profile = implementationProfile(labels);
             await upsertStepInstructions(
-              'implementation', implementationMarker, 'Puppets implementation instructions',
-              repo, issue.number, issue.node_id, defaultBranch, implementationInstructions
+              profile.step, implementationMarker, profile.heading,
+              repo, issue.number, issue.node_id, defaultBranch,
+              profile.step === 'implementation' ? implementationInstructions : null
             );
             if (!dryRun) {
               botId ??= await getCopilotBotId(repo);
@@ -1525,9 +1543,11 @@ module.exports = async ({ github, context, core }) => {
 
         if (!alreadyAssigned) {
           try {
+            const profile = implementationProfile(labels);
             await upsertStepInstructions(
-              'implementation', implementationMarker, 'Puppets implementation instructions',
-              repo, issue.number, issue.node_id, defaultBranch, implementationInstructions
+              profile.step, implementationMarker, profile.heading,
+              repo, issue.number, issue.node_id, defaultBranch,
+              profile.step === 'implementation' ? implementationInstructions : null
             );
           } catch (error) {
             core.warning(`  implementation instructions failed for ${repo}#${issue.number}: ${error.message}`);

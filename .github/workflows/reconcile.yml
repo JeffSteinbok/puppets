@@ -3,10 +3,6 @@ name: Puppets Reconcile
 on:
   workflow_call:
     inputs:
-      framework_ref:
-        description: Immutable Puppets commit SHA; must match the revision used in the caller's uses line
-        required: true
-        type: string
       dry_run:
         description: Report intended mutations without applying them
         required: false
@@ -32,6 +28,7 @@ on:
 permissions:
   actions: write
   contents: read
+  id-token: write
   issues: write
   pull-requests: write
   copilot-requests: write
@@ -45,16 +42,24 @@ jobs:
     steps:
       - name: Resolve framework revision
         id: framework
-        shell: bash
-        env:
-          FRAMEWORK_REF: ${{ inputs.framework_ref }}
-        run: |
-          ref="$FRAMEWORK_REF"
-          if [[ ! "$ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::Puppets callers must pin reconcile.yml to an immutable commit SHA."
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const token = await core.getIDToken('puppets-framework');
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString('utf8')
+            );
+            const expectedWorkflow =
+              'JeffSteinbok/puppets/.github/workflows/reconcile.yml@';
+            if (!payload.job_workflow_ref?.startsWith(expectedWorkflow)) {
+              core.setFailed(`Unexpected reusable workflow: ${payload.job_workflow_ref}`);
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(payload.job_workflow_sha || '')) {
+              core.setFailed('GitHub did not provide the reusable workflow commit SHA.');
+              return;
+            }
+            core.setOutput('ref', payload.job_workflow_sha);
 
       - name: Check out Puppets framework
         uses: actions/checkout@v4

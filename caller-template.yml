@@ -20,16 +20,17 @@ permissions:
   # The reusable workflow cannot elevate beyond these caller-granted permissions.
   actions: write
   contents: read
+  # Lets the reusable workflow identify its exact GitHub-resolved commit.
+  id-token: write
   issues: write
   pull-requests: write
   copilot-requests: write
 
 jobs:
   reconcile:
-    # Pin to a reviewed immutable commit. Replace both placeholders with the same SHA.
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_COMMIT_SHA
+    # Use a release tag such as v1 for convenience, or a full commit SHA for strict pinning.
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
     with:
-      framework_ref: FRAMEWORK_COMMIT_SHA
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:

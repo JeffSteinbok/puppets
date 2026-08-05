@@ -2,7 +2,7 @@
 
 Puppets is repository-owned, data-driven GitHub issue-to-PR automation. Each managed
 repository checks in a small caller workflow that invokes this public framework at an
-immutable commit SHA.
+explicit release tag or commit SHA.
 
 ## Principles
 
@@ -19,9 +19,8 @@ immutable commit SHA.
 
 1. Copy [`caller-template.yml`](caller-template.yml) to
    `.github/workflows/puppets.yml` in a public repository.
-2. Replace `FRAMEWORK_COMMIT_SHA` with an immutable commit from this repository.
-   The same SHA appears in both the workflow `uses` reference and its `framework_ref`
-   input so the called workflow can securely check out its packaged runtime.
+2. Replace `FRAMEWORK_REF` with a release tag such as `v1`, or use a full commit SHA for
+   strict pinning. Puppets derives the exact GitHub-resolved commit automatically.
 3. Add `.puppets/config.json`:
 
    ```json

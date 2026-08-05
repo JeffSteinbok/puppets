@@ -15,5 +15,6 @@ title: Security
 - Configuration and prompts are loaded from the caller's default branch.
 - Fork or pull-request-head code is never checked out with write credentials.
 - Local lifecycle data cannot remove protected states or bypass approval checks.
-- Production callers pin the public reusable workflow to an immutable commit SHA.
+- Callers use an explicit release tag or commit SHA; full SHAs provide the strongest
+  supply-chain pinning.
 - The framework never requires a token that can mutate other managed repositories.

@@ -60,8 +60,8 @@ own run, grants its own permissions, and calls shared public code at an immutabl
 <ol class="architecture-steps">
   <li>
     <strong>Resolve the framework revision.</strong>
-    The caller passes the same 40-character commit SHA used in its reusable-workflow
-    reference.
+    Puppets reads GitHub's signed reusable-workflow claim to resolve the exact commit
+    behind the caller's tag or SHA.
   </li>
   <li>
     <strong>Check out trusted sources separately.</strong>
@@ -87,9 +87,9 @@ own run, grants its own permissions, and calls shared public code at an immutabl
 
 ## Pinning and packaging
 
-The caller supplies the same immutable framework SHA in its `uses` reference and
-`framework_ref` input. GitHub exposes the caller workflow ref inside a reusable workflow,
-so the explicit input is required to check out the matching framework runtime.
+The caller supplies one framework tag or commit SHA in its `uses` reference. GitHub's
+signed OIDC token includes `job_workflow_sha`, the exact commit selected for the reusable
+workflow. Puppets uses that claim to check out the matching framework runtime.
 
 The reusable workflow never assumes framework files exist in the caller checkout. It checks
 out the public framework into an isolated directory, installs the locked runtime, and loads
@@ -98,9 +98,8 @@ the reconciler from that revision.
 ```yaml
 jobs:
   reconcile:
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_COMMIT_SHA
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
     with:
-      framework_ref: FRAMEWORK_COMMIT_SHA
       dry_run: ${{ inputs.dry_run || false }}
 ```
 
