@@ -325,7 +325,16 @@ li {
 
 code {
   color: #d9eaff;
+  border: 0;
+  border-radius: 4px;
   background: var(--puppets-panel-soft);
+}
+
+table code {
+  padding: 0;
+  color: var(--puppets-accent-strong);
+  background: transparent;
+  font-weight: 600;
 }
 
 .code-panel {
