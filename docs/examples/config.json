@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "approvalActors": ["YOUR_GITHUB_LOGIN"],
+  "maxNewIssues": 1,
+  "maxInFlight": 2
+}

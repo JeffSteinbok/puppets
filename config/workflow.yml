@@ -1,17 +1,30 @@
+# The API group and kind identify this document as a Puppets workflow definition.
 apiVersion: puppets.dev/v1alpha1
 kind: Workflow
+
+# DSL behavior is pinned independently from the Puppets release version. A future compiler
+# can support multiple DSL versions without silently changing an existing workflow.
 dslVersion: "1.0"
+
+# Metadata names the compiled workflow shown in diagnostics and summaries.
 metadata:
   name: basic
+
 spec:
+  # New issues without a managed state label begin at this stage.
   start: untracked
 
+  # Labels are desired GitHub label definitions. Names are policy data and can be changed
+  # by a caller overlay; runtime security depends on roles and stages, not fixed strings.
   labels:
+    # Control labels alter workflow execution. Exactly one label must own the opt-out role.
     controls:
       - role: opt-out
         name: puppets:no-auto
         color: "000000"
         description: Hard opt-out; Puppets must not process this item.
+
+    # Helper labels are created for repository classification but do not represent state.
     helpers:
       - name: type:bug
         color: "D73A4A"
@@ -29,29 +42,40 @@ spec:
         color: "0052CC"
         description: Parent or tracking issue.
 
+  # Profiles select routing and prompt behavior for an issue. The highest-priority matching
+  # non-default profile wins; exactly one fallback profile must set default: true.
   profiles:
     - name: basic
       default: true
       priority: 0
+      # An empty selector matches through the default fallback rather than label matching.
       selector: {}
+      # Route names select a branch declared by the approval stage below.
       routes:
         approved: curate
+      # Implementation controls the resolved prompt and optional trusted repository guidance.
       implementation:
         prompt: implementation
         guidance: implementation
         heading: Puppets implementation instructions
 
+  # Stages form the compiled state machine. Every branch value must name another stage.
+  # Handlers are trusted runtime implementations; YAML selects them but cannot inject code.
   stages:
+    # Entry stage for issues that do not currently carry a workflow state label.
     - name: untracked
       type: deterministic
       handler: triage
+      # Branch keys are named outcomes emitted by the handler.
       branches:
         needs-info: needs-info
         approved: approved
 
+    # Wait until the issue body contains enough actionable detail.
     - name: needs-info
       type: wait
       handler: wait-for-detail
+      # A stage label persists this state in GitHub between stateless reconciliation runs.
       label:
         name: puppets:needs-info
         color: "D4C5F9"
@@ -59,6 +83,8 @@ spec:
       branches:
         approved: approved
 
+    # Human trust gate. Runtime verifies label-event provenance, the actor allowlist, and
+    # the actor's current repository permission before either branch may execute.
     - name: approved
       type: gate
       handler: approval
@@ -67,9 +93,11 @@ spec:
         color: "0E8A16"
         description: A trusted maintainer approved automation work.
       branches:
+        # The default basic profile chooses curate; specialized profiles may choose claim.
         curate: curating
         claim: claimed
 
+    # Read-only agentic screening for abuse, duplicates, feasibility, and classification.
     - name: curating
       type: agentic
       handler: curation
@@ -78,10 +106,12 @@ spec:
         color: "1D76DB"
         description: Agentic curation is screening and classifying the issue.
       branches:
+        # A transient model/runtime failure returns to approval for a later retry.
         retry: approved
         pass: ready
         escalate: needs-human
 
+    # Admission queue. Repository limits determine when a ready item may be assigned.
     - name: ready
       type: deterministic
       handler: assignment
@@ -92,6 +122,7 @@ spec:
       branches:
         claim: claimed
 
+    # Copilot owns an implementation attempt and is expected to open a linked pull request.
     - name: claimed
       type: deterministic
       handler: pull-request
@@ -99,7 +130,9 @@ spec:
         name: puppets:claimed
         color: "C2E0C6"
         description: Copilot has been assigned and implementation is in progress.
+        # Mirrored labels are visibility projections on the linked PR; the issue is authoritative.
         mirrorToPr: true
+        # In-flight stages count against the repository's maxInFlight budget.
         countsAsInFlight: true
       branches:
         verify: verifying
@@ -107,6 +140,7 @@ spec:
         escalate: needs-human
         complete: done
 
+    # CI passed and the acceptance-review gate is evaluating the exact PR head.
     - name: verifying
       type: gate
       handler: pull-request
@@ -123,6 +157,7 @@ spec:
         escalate: needs-human
         complete: done
 
+    # A bounded remediation loop asks Copilot to address acceptance or mergeability failures.
     - name: needs-work
       type: agentic
       handler: pull-request
@@ -138,6 +173,7 @@ spec:
         escalate: needs-human
         complete: done
 
+    # Automated gates passed; Puppets waits for the repository's human merge policy.
     - name: in-review
       type: wait
       handler: pull-request
@@ -154,6 +190,7 @@ spec:
         escalate: needs-human
         complete: done
 
+    # Terminal human handoff for policy decisions, ambiguity, or exhausted retry budgets.
     - name: needs-human
       type: wait
       handler: human-handoff
@@ -167,6 +204,7 @@ spec:
         queue: ready
         complete: done
 
+    # Successful terminal stage. Reconciliation remains idempotent if the label is observed again.
     - name: done
       type: terminal
       handler: complete
@@ -175,6 +213,7 @@ spec:
         color: "6A737D"
         description: The linked PR merged and the lifecycle is complete.
         mirrorToPr: true
+        # Terminal stages are excluded from active pull-request polling.
         terminal: true
       branches:
         remain: done

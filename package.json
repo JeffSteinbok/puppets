@@ -19,6 +19,6 @@
   "homepage": "https://JeffSteinbok.github.io/puppets/",
   "dependencies": {
     "@github/copilot-sdk": "1.0.8",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.3"
   }
 }

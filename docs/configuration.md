@@ -112,6 +112,51 @@ Profiles select issues by labels and can choose an approval branch, implementati
 trusted guidance file, and heading. Higher-priority matching profiles win; exactly one
 profile must be the default.
 
+## Explore the files
+
+The explorer shows the fully commented basic workflow and a minimal caller overlay. Select
+a file to inspect it, then use **Copy** to place its contents on the clipboard.
+
+<div class="file-explorer" data-file-explorer>
+  <nav class="file-explorer-tree" aria-label="Puppets configuration files">
+    <div class="file-tree-root">puppets/</div>
+    <button type="button" class="file-tree-item is-active"
+      data-file-name="config/workflow.yml"
+      data-file-url="https://raw.githubusercontent.com/JeffSteinbok/puppets/main/config/workflow.yml">
+      <span aria-hidden="true">◇</span> config/workflow.yml
+    </button>
+    <div class="file-tree-root">caller repository/</div>
+    <button type="button" class="file-tree-item"
+      data-file-name=".puppets/config.json"
+      data-file-url="{{ '/examples/config.json' | relative_url }}">
+      <span aria-hidden="true">{ }</span> .puppets/config.json
+    </button>
+    <button type="button" class="file-tree-item"
+      data-file-name=".puppets/workflow.yml"
+      data-file-url="{{ '/examples/postmortem-workflow.yml' | relative_url }}">
+      <span aria-hidden="true">◇</span> .puppets/workflow.yml
+    </button>
+    <button type="button" class="file-tree-item"
+      data-file-name=".puppets/prompts/postmortem.md"
+      data-file-url="{{ '/examples/postmortem.md' | relative_url }}">
+      <span aria-hidden="true">#</span> .puppets/prompts/postmortem.md
+    </button>
+  </nav>
+  <section class="file-explorer-view" aria-live="polite">
+    <header class="file-explorer-toolbar">
+      <code data-file-explorer-name>config/workflow.yml</code>
+      <div>
+        <a data-file-explorer-open
+          href="https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml">
+          Open
+        </a>
+        <button type="button" data-file-explorer-copy>Copy</button>
+      </div>
+    </header>
+    <pre><code data-file-explorer-code>Loading workflow definition...</code></pre>
+  </section>
+</div>
+
 ## Prompt replacement
 
 A Markdown file under `.puppets/prompts/` replaces the framework prompt with the same

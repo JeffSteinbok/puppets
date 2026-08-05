@@ -121,6 +121,52 @@ This makes reconciliation repeatable: every run derives state from labels and ma
 comments rather than trusting an external database or a previous runner process. Overlapping
 runs are serialized by the caller's repository-scoped concurrency group.
 
+## State machine
+
+The basic workflow compiles to this graph. Branch names are declared outcomes, not model
+choices; trusted handlers emit an outcome and the compiled machine selects its target.
+
+<pre class="mermaid">
+stateDiagram-v2
+    state "needs-info" as needs_info
+    state "needs-work" as needs_work
+    state "in-review" as in_review
+    state "needs-human" as needs_human
+
+    [*] --> untracked
+    untracked --> needs_info: needs-info
+    untracked --> approved: approved label
+    needs_info --> approved: approved label
+    approved --> curating: curate profile route
+    approved --> claimed: claim profile route
+    curating --> approved: retry
+    curating --> ready: pass
+    curating --> needs_human: escalate
+    ready --> claimed: claim
+    claimed --> verifying: verify
+    claimed --> needs_work: remediate
+    claimed --> needs_human: escalate
+    verifying --> verifying: retry
+    verifying --> needs_work: remediate
+    verifying --> in_review: pass
+    verifying --> needs_human: escalate
+    needs_work --> verifying: verify
+    needs_work --> needs_work: retry
+    needs_work --> needs_human: escalate
+    in_review --> verifying: verify
+    in_review --> needs_work: remediate
+    in_review --> in_review: wait
+    in_review --> needs_human: escalate
+    needs_human --> approved: approve
+    needs_human --> ready: queue
+    claimed --> done: complete
+    verifying --> done: complete
+    needs_work --> done: complete
+    in_review --> done: complete
+    needs_human --> done: complete
+    done --> [*]
+</pre>
+
 ## Trust boundary
 
 The runtime, not editable workflow data, enforces approval provenance, current actor
