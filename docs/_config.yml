@@ -2,3 +2,10 @@ title: Puppets
 description: Repository-owned, data-driven GitHub issue-to-PR automation
 theme: minima
 repository: JeffSteinbok/puppets
+url: https://jeffsteinbok.github.io
+baseurl: /puppets
+header_pages:
+  - architecture.md
+  - configuration.md
+  - security.md
+  - postmortem.md
