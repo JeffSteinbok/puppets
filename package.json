@@ -4,7 +4,7 @@
   "private": true,
   "description": "Repository-owned, data-driven GitHub issue-to-PR automation.",
   "scripts": {
-    "check": "node --check src/reconcile.js && node --check lib/config.js && node --check lib/approval.js && node --check scripts/resolve-config.js && node --test",
+    "check": "node --check src/reconcile.js && node --check lib/config.js && node --check lib/workflow.js && node --check lib/state.js && node --check lib/approval.js && node --check scripts/resolve-config.js && node --test",
     "test": "node --test"
   },
   "repository": {
@@ -18,6 +18,7 @@
   },
   "homepage": "https://JeffSteinbok.github.io/puppets/",
   "dependencies": {
-    "@github/copilot-sdk": "1.0.8"
+    "@github/copilot-sdk": "1.0.8",
+    "yaml": "^2.8.1"
   }
 }

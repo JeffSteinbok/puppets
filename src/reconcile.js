@@ -8,21 +8,20 @@
  * `{ github, context, core }` toolkit (an authenticated Octokit, the workflow
  * context, and the Actions core helpers).
  *
- * State lives entirely in GitHub labels (`puppets:*`). The controller-owned
- * `config/lifecycle.json` declares the default states, label metadata, in-flight
- * accounting, PR projection, and allowed transitions. Procedural guards remain here.
+ * State lives entirely in configurable GitHub labels. The versioned workflow DSL declares
+ * stages, handlers, branches, label roles, profiles, prompts, and routing. Procedural
+ * security guards remain here.
  *
  * Lifecycle (one active label at a time):
  *   (no label) → needs-info → (cleared) → approved → curating → ready → claimed
  *   → verifying → in-review → done, with needs-work remediation returning to
  *   verifying and needs-human as the bounded-review escalation.
- *   In M1-parity mode (ENABLE_CURATION=false): approved → claimed directly.
  *
  * Security model: an issue's title/body are treated as untrusted data, never as
- * instructions. Nothing acts on an item until a human applies `puppets:approved`,
+ * instructions. Nothing acts on an item until a human applies the configured approval label,
  * and even then the approval is re-verified — the approver must be allowlisted AND
  * currently hold write/triage access on that repo (see `validApproval`). A single
- * `puppets:no-auto` label takes an item completely out of scope.
+ * configured opt-out label takes an item completely out of scope.
  *
  * Configuration is passed entirely through environment variables (wired up by the
  * calling workflow):
@@ -31,7 +30,7 @@
  *   PUPPETS_APPROVAL_ACTORS  — newline-separated allowlist of logins permitted to approve.
  *   PUPPETS_INBOX_WORKFLOW_ID — this workflow's file id, used to find the previous run.
  *   MAX_ISSUES_PER_REPO      — cap on new Copilot assignments per repo per run.
- *   MAX_IN_FLIGHT_PER_REPO   — cap on states marked countsAsInFlight in lifecycle.json.
+ *   MAX_IN_FLIGHT_PER_REPO   — cap on stages marked countsAsInFlight in workflow.yml.
  *   CONFLICT_RETRIES         — how many times Copilot is asked to resolve a conflict
  *                              before the item is escalated to a human.
  *   REVIEW_RETRIES           — acceptance-review remediation cycles before escalation.
@@ -40,9 +39,6 @@
  *   PUPPETS_STALE_HOURS      — age threshold (in hours) after which an un-triaged issue is
  *                              re-surfaced in the digest as stale (default: 72).
  *   DRY_RUN                  — when 'true', log every intended mutation but write nothing.
- *   ENABLE_CURATION          — when 'false', skip curation and assign Copilot directly
- *                              (M1-parity mode). Any other value (default) enables M2
- *                              curation via the GitHub Copilot SDK before assignment.
  */
 module.exports = async ({ github, context, core }) => {
   const fs = require('fs');
@@ -52,6 +48,8 @@ module.exports = async ({ github, context, core }) => {
     findLatestApprovalEvent,
     normalizePermissionLevels,
   } = require('../lib/approval');
+  const { createStateController } = require('../lib/state');
+  const { createMachineModel } = require('../lib/workflow');
   // ── Configuration (all inputs arrive as environment variables) ──
   const owner = process.env.PUPPETS_OWNER?.trim() || context.repo.owner;
   const dryRun = process.env.DRY_RUN === 'true';
@@ -82,74 +80,24 @@ module.exports = async ({ github, context, core }) => {
   const curationMarker = '<!-- puppets:curation:v1 -->';
   const acceptanceReviewMarker = '<!-- puppets:acceptance-review:v1 -->';
 
-  const lifecyclePath = process.env.PUPPETS_LIFECYCLE_PATH || 'config/lifecycle.json';
-  let lifecycle;
+  const workflowPath = process.env.PUPPETS_WORKFLOW_PATH || '.puppets-resolved/workflow.json';
+  let machine;
   try {
-    lifecycle = JSON.parse(fs.readFileSync(lifecyclePath, 'utf8'));
+    machine = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
   } catch (error) {
-    throw new Error(`Could not load ${lifecyclePath}: ${error.message}`);
+    throw new Error(`Could not load ${workflowPath}: ${error.message}`);
   }
-  if (!lifecycle || lifecycle.version !== 1 || !lifecycle.states ||
-      !Array.isArray(lifecycle.controlLabels) || !Array.isArray(lifecycle.helperLabels) ||
-      !lifecycle.transitions) {
-    throw new Error(`${lifecyclePath} does not match the supported lifecycle model`);
-  }
-  const stateEntries = Object.entries(lifecycle.states);
-  if (stateEntries.length === 0) throw new Error(`${lifecyclePath} must define states`);
-  const stateNames = new Set(stateEntries.map(([name]) => name));
-  const requiredStates = [
-    'needs-info', 'approved', 'curating', 'ready', 'claimed',
-    'verifying', 'needs-work', 'in-review', 'needs-human', 'done',
-  ];
-  if (requiredStates.some(name => !stateNames.has(name))) {
-    throw new Error(`${lifecyclePath} is missing a controller-required state`);
-  }
-  const stateLabels = stateEntries.map(([, metadata]) => metadata.label);
-  const stateNameByLabel = new Map(stateEntries.map(([name, metadata]) => [metadata.label, name]));
-  const labelNames = [
-    ...stateLabels,
-    ...lifecycle.controlLabels.map(label => label.name),
-    ...lifecycle.helperLabels.map(label => label.name),
-  ];
-  if (new Set(labelNames).size !== labelNames.length) {
-    throw new Error(`${lifecyclePath} contains duplicate label names`);
-  }
-  for (const [name, metadata] of stateEntries) {
-    if (!metadata || typeof metadata.label !== 'string' ||
-        !/^[0-9A-Fa-f]{6}$/.test(metadata.color) ||
-        typeof metadata.description !== 'string' ||
-        typeof metadata.mirrorToPr !== 'boolean' ||
-        typeof metadata.countsAsInFlight !== 'boolean' ||
-        (metadata.terminal !== undefined && typeof metadata.terminal !== 'boolean')) {
-      throw new Error(`${lifecyclePath}: invalid metadata for state "${name}"`);
-    }
-  }
-  for (const label of [...lifecycle.controlLabels, ...lifecycle.helperLabels]) {
-    if (!label || typeof label.name !== 'string' ||
-        !/^[0-9A-Fa-f]{6}$/.test(label.color) ||
-        typeof label.description !== 'string') {
-      throw new Error(`${lifecyclePath}: invalid control/helper label metadata`);
-    }
-  }
-  for (const [from, targets] of Object.entries(lifecycle.transitions)) {
-    if (from !== 'untracked' && !stateNames.has(from)) {
-      throw new Error(`${lifecyclePath}: transition source "${from}" is not a state`);
-    }
-    if (!Array.isArray(targets) || targets.some(target => !stateNames.has(target))) {
-      throw new Error(`${lifecyclePath}: invalid transition targets for "${from}"`);
-    }
-  }
-  for (const stateName of stateNames) {
-    if (!Array.isArray(lifecycle.transitions[stateName])) {
-      throw new Error(`${lifecyclePath}: state "${stateName}" has no transition list`);
-    }
-  }
-  if (!Array.isArray(lifecycle.transitions.untracked)) {
-    throw new Error(`${lifecyclePath}: untracked has no transition list`);
-  }
-  const trackedPrLabels = stateEntries
-    .filter(([, metadata]) => metadata.mirrorToPr && !metadata.terminal)
-    .map(([, metadata]) => metadata.label);
+  const model = createMachineModel(machine);
+  const {
+    stateMetadataByName,
+    stateNameByLabel,
+    managedLabels,
+    approvalLabel,
+    optOutLabel,
+    trackedPrLabels,
+    stage,
+    resolveProfile,
+  } = model;
 
   // Fail fast on misconfiguration rather than silently doing nothing / everything.
   if (!Number.isInteger(maxPerRepo) || maxPerRepo < 1) {
@@ -169,11 +117,16 @@ module.exports = async ({ github, context, core }) => {
   // edited without touching engine logic. They are read from the controller checkout; a
   // missing file degrades gracefully to empty text (that step simply posts nothing).
   const promptsDir = process.env.PUPPETS_PROMPTS_DIR || 'prompts';
+  const promptCache = new Map();
   const loadPrompt = name => {
+    if (promptCache.has(name)) return promptCache.get(name);
     try {
-      return fs.readFileSync(`${promptsDir}/${name}.md`, 'utf8').trim();
+      const prompt = fs.readFileSync(`${promptsDir}/${name}.md`, 'utf8').trim();
+      promptCache.set(name, prompt);
+      return prompt;
     } catch (error) {
       core.warning(`Prompt file ${promptsDir}/${name}.md not found; using empty text.`);
+      promptCache.set(name, '');
       return '';
     }
   };
@@ -182,7 +135,6 @@ module.exports = async ({ github, context, core }) => {
     template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? values[key] : match));
   const prompts = {
     implementation: loadPrompt('implementation'),
-    postmortem: loadPrompt('postmortem'),
     review: loadPrompt('review'),
     acceptanceReview: loadPrompt('acceptance-review'),
     conflict: loadPrompt('conflict'),
@@ -218,9 +170,6 @@ module.exports = async ({ github, context, core }) => {
     inboxSince = new Date(Date.now() - inboxFallbackHours * 3600 * 1000);
     core.warning(`Could not read prior run time (${error.message}); using ${inboxFallbackHours}h fallback.`);
   }
-  // ── Small pure helpers over the issue/label shapes the REST API returns ──
-  const labelName = label => typeof label === 'string' ? label : label.name;
-  const issueLabels = issue => new Set((issue.labels || []).map(labelName));
   const ignoredLabels = new Set(
     (process.env.PUPPETS_IGNORE_LABELS || '')
       .split(/[\n,]/)
@@ -228,133 +177,24 @@ module.exports = async ({ github, context, core }) => {
       .filter(Boolean)
   );
   const isIgnored = labels =>
-    labels.has('puppets:no-auto') || [...ignoredLabels].some(label => labels.has(label));
-  const implementationProfile = labels => labels.has('postmortem') && prompts.postmortem
-    ? {
-        step: 'postmortem',
-        heading: 'Puppets postmortem instructions',
-      }
-    : {
-        step: 'implementation',
-        heading: 'Puppets implementation instructions',
-      };
-  const trackedStates = new Map();
-  const trackedLabels = new Map();
-  const itemKey = (repo, issue) => `${repo}:${issue.node_id || issue.number}`;
-  const currentLabels = (repo, issue) => {
-    const key = itemKey(repo, issue);
-    if (!trackedLabels.has(key)) trackedLabels.set(key, issueLabels(issue));
-    return trackedLabels.get(key);
-  };
-  const currentStateName = (repo, issue) => {
-    const key = itemKey(repo, issue);
-    if (trackedStates.has(key)) return trackedStates.get(key);
-    const active = [...currentLabels(repo, issue)].filter(label => stateNameByLabel.has(label));
-    if (active.length > 1) {
-      core.warning(
-        `${repo}#${issue.number} has multiple lifecycle states (${active.join(', ')}); ` +
-        'the next transition will reconcile them.'
-      );
-    }
-    const activeNames = new Set(active.map(label => stateNameByLabel.get(label)));
-    let stateName;
-    if (activeNames.has('approved') && activeNames.has('needs-human')) {
-      stateName = 'approved';
-    } else if (activeNames.has('ready')) {
-      stateName = 'ready';
-    } else {
-      stateName = [...stateNames].reverse().find(name => activeNames.has(name)) || 'untracked';
-    }
-    trackedStates.set(key, stateName);
-    return stateName;
-  };
-  const stateLabel = stateName => {
-    const metadata = lifecycle.states[stateName];
-    if (!metadata) throw new Error(`Unknown Puppets state "${stateName}"`);
-    return metadata.label;
-  };
-  const assertTransition = (from, to) => {
-    if (!stateNames.has(to)) throw new Error(`Unknown Puppets state "${to}"`);
-    if (from === to) return;
-    if (!lifecycle.transitions[from]?.includes(to)) {
-      throw new Error(`Lifecycle transition ${from} -> ${to} is not allowed`);
-    }
-  };
+    labels.has(optOutLabel) || [...ignoredLabels].some(label => labels.has(label));
+  const {
+    addLabel,
+    clearPrState,
+    clearState,
+    currentStateName,
+    issueLabels,
+    removeLabel,
+    setLinkedState,
+    setPrState,
+    setState,
+    stateLabel,
+  } = createStateController({ github, core, owner, dryRun, model });
   // Skip issues opened by bots (including this automation) so we never act on our own noise.
   const isBotFiled = issue =>
     issue.user?.type === 'Bot' || issue.user?.login?.toLowerCase().endsWith('[bot]');
   // The (non-AI) triage bar: a body with at least a little substance.
   const hasEnoughDetail = issue => (issue.body || '').trim().length >= 40;
-
-  // Add one label (honouring dry-run, which logs but writes nothing).
-  async function addLabel(repo, issueNumber, label) {
-    console.log(`  + ${label}`);
-    if (!dryRun) {
-      await github.rest.issues.addLabels({
-        owner, repo, issue_number: issueNumber, labels: [label],
-      });
-    }
-  }
-
-  async function removeLabel(repo, issueNumber, label, labels) {
-    if (!labels.has(label)) return;
-    console.log(`  - ${label}`);
-    if (!dryRun) {
-      await github.rest.issues.removeLabel({
-        owner, repo, issue_number: issueNumber, name: label,
-      });
-    }
-  }
-
-  async function setState(repo, issue, nextState, options = {}) {
-    const nextLabel = stateLabel(nextState);
-    const currentState = currentStateName(repo, issue);
-    if (options.validateTransition !== false) assertTransition(currentState, nextState);
-    const labels = currentLabels(repo, issue);
-    if (!labels.has(nextLabel)) {
-      await addLabel(repo, issue.number, nextLabel);
-      labels.add(nextLabel);
-    }
-    for (const label of stateLabels) {
-      if (label !== nextLabel) {
-        await removeLabel(repo, issue.number, label, labels);
-        labels.delete(label);
-      }
-    }
-    trackedStates.set(itemKey(repo, issue), nextState);
-  }
-
-  async function clearState(repo, issue) {
-    const labels = currentLabels(repo, issue);
-    for (const label of stateLabels) {
-      await removeLabel(repo, issue.number, label, labels);
-      labels.delete(label);
-    }
-    trackedStates.set(itemKey(repo, issue), 'untracked');
-  }
-
-  async function setPrState(repo, prNumber, nextState) {
-    if (!stateNames.has(nextState)) throw new Error(`Unknown Puppets state "${nextState}"`);
-    if (!lifecycle.states[nextState].mirrorToPr) return;
-    const { data: prAsIssue } = await github.rest.issues.get({
-      owner, repo, issue_number: prNumber,
-    });
-    await setState(repo, prAsIssue, nextState, { validateTransition: false });
-  }
-
-  async function clearPrState(repo, prNumber) {
-    const { data: prAsIssue } = await github.rest.issues.get({
-      owner, repo, issue_number: prNumber,
-    });
-    await clearState(repo, prAsIssue);
-  }
-
-  async function setLinkedState(repo, issue, pr, nextState) {
-    // Update the projection first. If PR labeling fails, the authoritative issue remains
-    // in an active state and a later reconciliation can retry the repair.
-    await setPrState(repo, pr.number, nextState);
-    await setState(repo, issue, nextState);
-  }
 
   // Write or update a comment using GraphQL mutations, which work with either
   // issues=write or pull_requests=write fine-grained PAT permissions (unlike the
@@ -416,7 +256,7 @@ module.exports = async ({ github, context, core }) => {
   // by the managed repo's optional per-repo guidance, clearly attributed to its source file.
   // Idempotent: the hidden marker lets repeated runs update one comment instead of stacking.
   async function upsertStepInstructions(step, marker, heading, repo, targetNumber, subjectNodeId, defaultBranch, perRepo) {
-    const base = prompts[step] || '';
+    const base = loadPrompt(step);
     if (!base && !perRepo?.content) return; // nothing to say for this step
     // Assemble the instruction body, then tuck it inside a collapsed <details> block so it
     // stays out of the way on the issue/PR thread while remaining fully present in the
@@ -456,11 +296,32 @@ module.exports = async ({ github, context, core }) => {
     await writeComment(subjectNodeId, existing?.node_id ?? null, body);
   }
 
+  async function upsertProfileInstructions(
+    profile,
+    repo,
+    issue,
+    defaultBranch
+  ) {
+    const guidance = profile.implementation.guidance
+      ? await readStepInstructions(repo, defaultBranch, profile.implementation.guidance)
+      : null;
+    await upsertStepInstructions(
+      profile.implementation.prompt,
+      implementationMarker,
+      profile.implementation.heading,
+      repo,
+      issue.number,
+      issue.node_id,
+      defaultBranch,
+      guidance
+    );
+  }
+
   async function latestApprovalEvent(repo, issueNumber) {
     const events = await github.paginate(github.rest.issues.listEvents, {
       owner, repo, issue_number: issueNumber, per_page: 100,
     });
-    return findLatestApprovalEvent(events);
+    return findLatestApprovalEvent(events, approvalLabel);
   }
 
   async function validApproval(repo, issue) {
@@ -495,7 +356,10 @@ module.exports = async ({ github, context, core }) => {
     await comment(
       repo,
       issue.node_id,
-      render(prompts.invalidApproval, { reason: approval.reason })
+      render(prompts.invalidApproval, {
+        reason: approval.reason,
+        approvalLabel,
+      })
     );
     return null;
   }
@@ -614,7 +478,7 @@ module.exports = async ({ github, context, core }) => {
     const { data } = await github.rest.issues.get({
       owner, repo, issue_number: prNumber,
     });
-    return issueLabels(data).has('puppets:no-auto');
+    return issueLabels(data).has(optOutLabel);
   }
 
   async function rerunActionRequiredWorkflows(repo, pr) {
@@ -756,9 +620,9 @@ module.exports = async ({ github, context, core }) => {
 
   // Run agentic curation on an issue: abuse screen, dedupe, and auto-labeling.
   // Called after the issue has already been moved to `puppets:curating`.
-  // On success: transitions the issue to `puppets:ready` or `puppets:needs-human`,
+  // On success: transitions the issue through the configured curation branches,
   // or closes it if it is a duplicate.
-  // Throws on unrecoverable errors so the caller can roll back to `puppets:approved`.
+  // Throws on unrecoverable errors so the caller can roll back to its approval stage.
   async function curateIssue(repo, issue, allIssues, repoLabelNames) {
     if (!prompts.curation) {
       throw new Error('curation.md is missing; refusing to bypass the curation gate');
@@ -778,7 +642,7 @@ module.exports = async ({ github, context, core }) => {
       .join(', ') || 'type:bug, type:feature, type:chore';
 
     const currentLabels = [...issueLabels(issue)]
-      .filter(l => !l.startsWith('puppets:'))
+      .filter(label => !managedLabels.has(label))
       .join(', ') || '(none)';
 
     const userMessage = [
@@ -1392,14 +1256,10 @@ module.exports = async ({ github, context, core }) => {
     console.log(`\n📦 ${owner}/${repo}`);
     const repository = await github.rest.repos.get({ owner, repo });
     const defaultBranch = repository.data.default_branch;
-    // Load this repo's optional implementation and acceptance-review guidance up front. A
-    // present-but-invalid file (too big / wrong type) skips the whole repo rather than
-    // letting the agent run on half-read instructions.
-    let implementationInstructions;
+    // Load acceptance-review guidance up front. Profile-specific implementation guidance
+    // is loaded only if that profile is selected for an issue.
     let reviewInstructions;
     try {
-      implementationInstructions =
-        await readStepInstructions(repo, defaultBranch, 'implementation');
       reviewInstructions =
         await readStepInstructions(repo, defaultBranch, 'review');
     } catch (error) {
@@ -1425,7 +1285,7 @@ module.exports = async ({ github, context, core }) => {
       }
     }
     const inFlightCount = [...trackedPrByNumber.values()].filter(issue =>
-      lifecycle.states[currentStateName(repo, issue)]?.countsAsInFlight
+      stateMetadataByName.get(currentStateName(repo, issue))?.countsAsInFlight
     ).length;
     let assignedInRepo = 0;
     let botId;
@@ -1436,16 +1296,17 @@ module.exports = async ({ github, context, core }) => {
       if (isIgnored(labels)) continue;
       const state = currentStateName(repo, issue);
 
-      // New arrival with no puppets:* label yet -> needs your decision (approve or
+      const hasState = [...labels].some(label => stateNameByLabel.has(label));
+      // New arrival with no workflow state label yet -> needs your decision (approve or
       // ignore). Announced once, keyed off the inbox cutoff above.
       if (new Date(issue.created_at) > inboxSince &&
-          ![...labels].some(label => label.startsWith('puppets:'))) {
+          !hasState) {
         inbox.push({ repo, number: issue.number, title: issue.title });
         inboxKeys.add(`${repo}#${issue.number}`);
       }
-      // Stale un-triaged: no puppets:* label, older than staleHours, not in the new-issues
+      // Stale un-triaged: no workflow state label, older than staleHours, not in the new-issues
       // inbox (de-duped by key so a brand-new issue never appears in both sections).
-      if (![...labels].some(label => label.startsWith('puppets:')) &&
+      if (!hasState &&
           new Date(issue.created_at) <= staleThreshold &&
           !inboxKeys.has(`${repo}#${issue.number}`)) {
         stale.push({ repo, number: issue.number, title: issue.title });
@@ -1458,35 +1319,30 @@ module.exports = async ({ github, context, core }) => {
           await comment(
             repo,
             issue.node_id,
-            render(prompts.invalidApproval, { reason: approval.reason })
+            render(prompts.invalidApproval, {
+              reason: approval.reason,
+              approvalLabel,
+            })
           );
           continue;
         }
 
-        // Postmortems already describe a merged fix and use a dedicated implementation
-        // profile, so generic issue curation adds no value. They still require the same
-        // verified human approval as every other Puppets assignment.
-        const postmortem = labels.has('postmortem');
-        if (process.env.ENABLE_CURATION === 'false' || postmortem) {
+        const profile = resolveProfile(labels);
+        const approvalStage = stage('approved');
+        const routeTarget = approvalStage.branches[profile.routes.approved];
+        const routeHandler = stage(routeTarget).handler;
+        if (routeHandler === 'assignment' || routeHandler === 'pull-request') {
           if (assignedInRepo >= maxPerRepo) continue;
           if (inFlightCount + assignedInRepo >= maxInFlightPerRepo) {
             console.log(`#${issue.number}: in-flight cap reached (${maxInFlightPerRepo})`);
             continue;
           }
-          console.log(
-            `#${issue.number}: approved by ${approval.actor} ` +
-            `(${postmortem ? 'postmortem profile' : 'curation disabled'})`
-          );
+          console.log(`#${issue.number}: approved by ${approval.actor} (${profile.name} profile)`);
           const alreadyAssigned = (issue.assignees || []).some(assignee =>
             ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
           );
           if (!alreadyAssigned) {
-            const profile = implementationProfile(labels);
-            await upsertStepInstructions(
-              profile.step, implementationMarker, profile.heading,
-              repo, issue.number, issue.node_id, defaultBranch,
-              profile.step === 'implementation' ? implementationInstructions : null
-            );
+            await upsertProfileInstructions(profile, repo, issue, defaultBranch);
             if (!dryRun) {
               botId ??= await getCopilotBotId(repo);
               if (!botId) {
@@ -1495,7 +1351,7 @@ module.exports = async ({ github, context, core }) => {
               await assignCopilot(issue, botId);
             }
           }
-          await setState(repo, issue, 'claimed');
+          await setState(repo, issue, routeTarget);
           assignedInRepo++;
           assigned++;
           console.log(`  ${dryRun ? 'would assign' : 'assigned'} Copilot`);
@@ -1504,8 +1360,13 @@ module.exports = async ({ github, context, core }) => {
 
         // M2: move to curating, then run curation. On failure, roll back to
         // approved so the item is retried on the next reconciler run.
-        console.log(`#${issue.number}: approved by ${approval.actor} → curating`);
-        await setState(repo, issue, 'curating');
+        if (routeHandler !== 'curation') {
+          throw new Error(
+            `Profile "${profile.name}" routes approval to unsupported handler "${routeHandler}"`
+          );
+        }
+        console.log(`#${issue.number}: approved by ${approval.actor} → ${routeTarget}`);
+        await setState(repo, issue, routeTarget);
         try {
           await curateIssue(repo, issue, issues, repoLabelNames);
         } catch (error) {
@@ -1543,12 +1404,7 @@ module.exports = async ({ github, context, core }) => {
 
         if (!alreadyAssigned) {
           try {
-            const profile = implementationProfile(labels);
-            await upsertStepInstructions(
-              profile.step, implementationMarker, profile.heading,
-              repo, issue.number, issue.node_id, defaultBranch,
-              profile.step === 'implementation' ? implementationInstructions : null
-            );
+            await upsertProfileInstructions(resolveProfile(labels), repo, issue, defaultBranch);
           } catch (error) {
             core.warning(`  implementation instructions failed for ${repo}#${issue.number}: ${error.message}`);
           }
@@ -1577,7 +1433,7 @@ module.exports = async ({ github, context, core }) => {
       if (state === 'needs-info') {
         if (hasEnoughDetail(issue)) {
           console.log(`#${issue.number}: sufficient detail added`);
-          await removeLabel(repo, issue.number, 'puppets:needs-info', labels);
+          await removeLabel(repo, issue.number, stateLabel('needs-info'), labels);
         }
         continue;
       }
@@ -1608,10 +1464,10 @@ module.exports = async ({ github, context, core }) => {
 
   const sections = [];
   if (inbox.length) {
-    sections.push(`**🆕 New issues to review (${inbox.length})** — approve with \`puppets:approved\` or ignore:\n${renderList(inbox)}`);
+    sections.push(`**🆕 New issues to review (${inbox.length})** — approve with \`${approvalLabel}\` or ignore:\n${renderList(inbox)}`);
   }
   if (stale.length) {
-    sections.push(`**🔁 Stale un-triaged issues (${stale.length})** — still needs \`puppets:approved\` or \`puppets:no-auto\`:\n${renderList(stale)}`);
+    sections.push(`**🔁 Stale un-triaged issues (${stale.length})** — still needs \`${approvalLabel}\` or \`${optOutLabel}\`:\n${renderList(stale)}`);
   }
   if (waiting.length) {
     sections.push(`**⏳ Needs a decision (${waiting.length})**:\n${renderList(waiting)}`);

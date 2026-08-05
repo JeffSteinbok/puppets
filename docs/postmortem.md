@@ -12,9 +12,10 @@ reconciliation.
 ## How it works
 
 1. A merged bug-fix pull request creates a postmortem tracking issue.
-2. The trigger labels the issue `postmortem` but does not assign Copilot.
-3. A trusted maintainer applies `puppets:approved`.
-4. Puppets bypasses generic curation and assigns Copilot with the postmortem prompt.
+2. The trigger applies the label selected by a repository workflow profile but does not
+   assign Copilot.
+3. A trusted maintainer applies the configured approval label.
+4. The matching profile routes directly to assignment and selects the postmortem prompt.
 5. Copilot opens a hardening pull request.
 6. Repository-owned guard and publishing workflows can validate the writeup and mirror it
    to the tracking issue.
@@ -24,7 +25,25 @@ occurs before verified human approval.
 
 ## Optional repository prompt
 
-Puppets provides a generic postmortem prompt. Replace it for a repository by creating:
+Declare the profile in `.puppets/workflow.yml`:
+
+```yaml
+spec:
+  profiles:
+    - name: postmortem
+      default: false
+      priority: 100
+      selector:
+        allLabels: [postmortem]
+      routes:
+        approved: claim
+      implementation:
+        prompt: postmortem
+        guidance: null
+        heading: Postmortem instructions
+```
+
+Then provide the repository prompt:
 
 ```text
 .puppets/prompts/postmortem.md
@@ -35,4 +54,4 @@ build commands, required analysis format, branch naming, PR markers, and guard-w
 expectations.
 
 Repositories that do not want Puppets to process a particular postmortem can still apply
-`puppets:no-auto`.
+their configured opt-out label.

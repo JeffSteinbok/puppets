@@ -1,0 +1,180 @@
+apiVersion: puppets.dev/v1alpha1
+kind: Workflow
+dslVersion: "1.0"
+metadata:
+  name: basic
+spec:
+  start: untracked
+
+  labels:
+    controls:
+      - role: opt-out
+        name: puppets:no-auto
+        color: "000000"
+        description: Hard opt-out; Puppets must not process this item.
+    helpers:
+      - name: type:bug
+        color: "D73A4A"
+        description: Something is broken.
+      - name: type:feature
+        color: "A2EEEF"
+        description: New capability.
+      - name: type:chore
+        color: "CFD3D7"
+        description: Maintenance or housekeeping.
+      - name: stale
+        color: "EDEDED"
+        description: No activity within the configured threshold.
+      - name: tracking
+        color: "0052CC"
+        description: Parent or tracking issue.
+
+  profiles:
+    - name: basic
+      default: true
+      priority: 0
+      selector: {}
+      routes:
+        approved: curate
+      implementation:
+        prompt: implementation
+        guidance: implementation
+        heading: Puppets implementation instructions
+
+  stages:
+    - name: untracked
+      type: deterministic
+      handler: triage
+      branches:
+        needs-info: needs-info
+        approved: approved
+
+    - name: needs-info
+      type: wait
+      handler: wait-for-detail
+      label:
+        name: puppets:needs-info
+        color: "D4C5F9"
+        description: Missing reproduction details, logs, version, or acceptance criteria.
+      branches:
+        approved: approved
+
+    - name: approved
+      type: gate
+      handler: approval
+      label:
+        name: puppets:approved
+        color: "0E8A16"
+        description: A trusted maintainer approved automation work.
+      branches:
+        curate: curating
+        claim: claimed
+
+    - name: curating
+      type: agentic
+      handler: curation
+      label:
+        name: puppets:curating
+        color: "1D76DB"
+        description: Agentic curation is screening and classifying the issue.
+      branches:
+        retry: approved
+        pass: ready
+        escalate: needs-human
+
+    - name: ready
+      type: deterministic
+      handler: assignment
+      label:
+        name: puppets:ready
+        color: "5319E7"
+        description: Cleared curation and waiting for an implementation slot.
+      branches:
+        claim: claimed
+
+    - name: claimed
+      type: deterministic
+      handler: pull-request
+      label:
+        name: puppets:claimed
+        color: "C2E0C6"
+        description: Copilot has been assigned and implementation is in progress.
+        mirrorToPr: true
+        countsAsInFlight: true
+      branches:
+        verify: verifying
+        remediate: needs-work
+        escalate: needs-human
+        complete: done
+
+    - name: verifying
+      type: gate
+      handler: pull-request
+      label:
+        name: puppets:verifying
+        color: "FBCA04"
+        description: CI is green and acceptance evidence is being reviewed.
+        mirrorToPr: true
+        countsAsInFlight: true
+      branches:
+        retry: verifying
+        remediate: needs-work
+        pass: in-review
+        escalate: needs-human
+        complete: done
+
+    - name: needs-work
+      type: agentic
+      handler: pull-request
+      label:
+        name: puppets:needs-work
+        color: "E99695"
+        description: Acceptance or mergeability requires bounded remediation.
+        mirrorToPr: true
+        countsAsInFlight: true
+      branches:
+        verify: verifying
+        retry: needs-work
+        escalate: needs-human
+        complete: done
+
+    - name: in-review
+      type: wait
+      handler: pull-request
+      label:
+        name: puppets:in-review
+        color: "006B75"
+        description: Automated gates passed and the PR awaits maintainer review.
+        mirrorToPr: true
+        countsAsInFlight: true
+      branches:
+        verify: verifying
+        remediate: needs-work
+        wait: in-review
+        escalate: needs-human
+        complete: done
+
+    - name: needs-human
+      type: wait
+      handler: human-handoff
+      label:
+        name: puppets:needs-human
+        color: "B60205"
+        description: A genuine human decision or intervention is required.
+        mirrorToPr: true
+      branches:
+        approve: approved
+        queue: ready
+        complete: done
+
+    - name: done
+      type: terminal
+      handler: complete
+      label:
+        name: puppets:done
+        color: "6A737D"
+        description: The linked PR merged and the lifecycle is complete.
+        mirrorToPr: true
+        terminal: true
+      branches:
+        remain: done

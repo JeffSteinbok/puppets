@@ -12,8 +12,8 @@ explicit release tag or commit SHA.
 - Standard GitHub-hosted runner usage is billed to the caller repository and is free for
   public repositories.
 - No central controller, inbound webhook, or cross-repository mutation token is required.
-- Approval provenance, `puppets:no-auto`, trusted-branch loading, and fork isolation fail
-  closed and cannot be disabled by configuration.
+- Approval provenance, the configured opt-out role, trusted-branch loading, and fork
+  isolation fail closed and cannot be disabled by configuration.
 
 ## Install
 
@@ -30,9 +30,10 @@ explicit release tag or commit SHA.
    }
    ```
 
-4. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
+4. Optionally add `.puppets/workflow.yml` to overlay the versioned `basic` workflow DSL.
+5. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
    perform Copilot assignment.
-5. Run the workflow manually with `dry_run: true`.
+6. Run the workflow manually with `dry_run: true`.
 
 See the [complete getting-started guide](https://JeffSteinbok.github.io/puppets/getting-started.html)
 for the documented caller workflow, permissions, credentials, dry-run rollout, upgrades,

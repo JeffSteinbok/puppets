@@ -70,8 +70,8 @@ own run, grants its own permissions, and calls shared public code at an immutabl
   </li>
   <li>
     <strong>Resolve policy before mutation.</strong>
-    Framework defaults merge with the caller's validated configuration, lifecycle overlay,
-    and prompt replacements.
+    The versioned basic workflow merges with the caller's workflow overlay and prompts,
+    then compiles into a validated state machine.
   </li>
   <li>
     <strong>Reconcile labels and state.</strong>
@@ -123,7 +123,7 @@ runs are serialized by the caller's repository-scoped concurrency group.
 
 ## Trust boundary
 
-The runtime, not editable lifecycle data, enforces approval provenance, current actor
-permission, `puppets:no-auto`, trusted-default-branch configuration, fork isolation, and
-transition validation. See the [security model](security.html) for the complete set of
-protected invariants.
+The runtime, not editable workflow data, enforces approval provenance, current actor
+permission, the configured opt-out role, trusted-default-branch configuration, fork
+isolation, and transition validation. See the [security model](security.html) for the
+complete set of protected invariants.

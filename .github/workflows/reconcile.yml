@@ -104,12 +104,19 @@ jobs:
           github-token: ${{ secrets.token || github.token }}
           script: |
             const fs = require('fs');
-            const lifecycle = JSON.parse(fs.readFileSync('.puppets-resolved/lifecycle.json'));
+            const workflow = JSON.parse(fs.readFileSync('.puppets-resolved/workflow.json'));
             const specs = [
-              ...Object.values(lifecycle.states).map(({ label: name, color, description }) =>
-                ({ name, color, description })),
-              ...lifecycle.controlLabels,
-              ...lifecycle.helperLabels,
+              ...workflow.stages
+                .filter(stage => stage.label)
+                .map(stage => ({
+                  name: stage.label.name,
+                  color: String(stage.label.color),
+                  description: stage.label.description,
+                })),
+              ...workflow.controlLabels.map(({ name, color, description }) =>
+                ({ name, color: String(color), description })),
+              ...workflow.helperLabels.map(({ name, color, description }) =>
+                ({ name, color: String(color), description })),
             ];
             const existing = new Map((await github.paginate(
               github.rest.issues.listLabelsForRepo,

@@ -105,8 +105,8 @@ Create `.puppets/config.json`:
 ```
 
 `approvalActors` is an allowlist, not the whole authorization decision. At runtime Puppets
-also confirms that the actor who applied `puppets:approved` still has write, maintain,
-triage, or admin permission in the repository.
+also confirms that the actor who applied the workflow's approval label still has write,
+maintain, triage, or admin permission in the repository.
 
 See the [configuration reference](configuration.html) for every setting, ignored labels,
 lifecycle overlays, and trusted prompt replacements.
@@ -146,35 +146,45 @@ Run the workflow manually with `dry_run: false`. Confirm labels were created and
 unapproved issue invoked a model or coding agent. The checked-in schedule then becomes the
 self-healing pass.
 
-To start work on an issue:
+With the built-in `basic` profile, start work on an issue by:
 
 1. Ensure the issue has enough concrete detail.
 2. Apply `puppets:approved` as an allowlisted maintainer.
 3. Run Puppets manually or wait for the next schedule.
 4. Follow the issue and linked pull-request labels through the lifecycle.
 
-Apply `puppets:no-auto` whenever an issue or linked PR must be entirely excluded.
+Apply the workflow's configured opt-out label whenever an issue or linked PR must be
+entirely excluded.
 
-## 7. Integrate repository-owned processes
+## 7. Add specialized profiles
 
-Domain-specific automation should remain local. Add its stable label to `ignoreLabels`, and
-apply `puppets:no-auto` to tracking issues when an absolute opt-out is appropriate.
+Domain-specific routing belongs in `.puppets/workflow.yml`. For example, a postmortem
+profile can match a repository label, bypass curation through the declared `claim` branch,
+and select a custom prompt:
 
-```json
-{
-  "version": 1,
-  "approvalActors": ["YOUR_GITHUB_LOGIN"],
-  "ignoreLabels": ["postmortem"]
-}
+```yaml
+spec:
+  profiles:
+    - name: postmortem
+      default: false
+      priority: 100
+      selector:
+        allLabels: [postmortem]
+      routes:
+        approved: claim
+      implementation:
+        prompt: postmortem
+        guidance: null
+        heading: Postmortem instructions
 ```
 
-The `obsidian-onedrive` pilot uses this pattern for its merged-bug postmortem workflow. See
-[postmortem integration](postmortem.html).
+Repository-owned triggers still decide when to create and label the tracking issue. Puppets
+owns the approved assignment and lifecycle after that.
 
 ## 8. Upgrade safely
 
 1. Review the target Puppets commit and release notes.
-2. Change both SHA occurrences in the caller workflow.
+2. Change the single framework reference in the caller workflow.
 3. Open a pull request in the managed repository.
 4. Run `workflow_dispatch` with `dry_run: true` from the updated default branch after merge.
 5. Keep rollback simple: restore the previous known-good SHA.

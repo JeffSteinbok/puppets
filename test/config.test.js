@@ -8,57 +8,111 @@ const assert = require('node:assert/strict');
 const {
   mergeObjects,
   resolveConfiguration,
-  validateLifecycle,
 } = require('../lib/config');
+const {
+  compileWorkflow,
+  createMachineModel,
+  mergeWorkflow,
+  parseWorkflow,
+  resolveProfile,
+} = require('../lib/workflow');
 
-const lifecycle = require('../config/lifecycle.json');
+const workflowSource = fs.readFileSync(
+  path.join(__dirname, '..', 'config', 'workflow.yml'),
+  'utf8'
+);
+const workflowDefinition = parseWorkflow(workflowSource, 'config/workflow.yml');
 
-test('arrays replace while objects merge by key', () => {
+test('arrays replace while ordinary objects merge by key', () => {
   assert.deepEqual(
     mergeObjects({ nested: { keep: true, list: ['a'] } }, { nested: { list: ['b'] } }),
     { nested: { keep: true, list: ['b'] } }
   );
 });
 
-test('protected approval label cannot be overridden', () => {
-  const changed = structuredClone(lifecycle);
-  changed.states.approved.label = 'custom:approved';
-  assert.throws(() => validateLifecycle(changed), /protected state "approved"/);
+test('workflow overlays merge stages, labels, and profiles by identity', () => {
+  const overlay = parseWorkflow(`
+spec:
+  labels:
+    controls:
+      - role: opt-out
+        name: automation:skip
+        color: "111111"
+        description: Skip automation.
+  profiles:
+    - name: postmortem
+      default: false
+      priority: 100
+      selector:
+        allLabels: [incident-review]
+      routes:
+        approved: claim
+      implementation:
+        prompt: postmortem
+        guidance: null
+        heading: Incident review instructions
+  stages:
+    - name: approved
+      label:
+        name: automation:approved
+`, 'overlay');
+
+  const machine = compileWorkflow(mergeWorkflow(workflowDefinition, overlay));
+  const model = createMachineModel(machine);
+  assert.equal(model.approvalLabel, 'automation:approved');
+  assert.equal(model.optOutLabel, 'automation:skip');
+  assert.equal(
+    resolveProfile(machine, new Set(['incident-review'])).implementation.prompt,
+    'postmortem'
+  );
+  assert.equal(resolveProfile(machine, new Set()).name, 'basic');
 });
 
-test('puppets:no-auto cannot be removed', () => {
-  const changed = structuredClone(lifecycle);
-  changed.controlLabels = [];
-  assert.throws(() => validateLifecycle(changed), /puppets:no-auto/);
+test('workflow rejects a missing opt-out role', () => {
+  const changed = structuredClone(workflowDefinition);
+  changed.spec.labels.controls = [];
+  assert.throws(() => compileWorkflow(changed), /opt-out/);
 });
 
-test('local configuration and lifecycle metadata are resolved', () => {
+test('workflow rejects dangling branches', () => {
+  const changed = structuredClone(workflowDefinition);
+  changed.spec.stages.find(stage => stage.name === 'approved').branches.curate = 'missing';
+  assert.throws(() => compileWorkflow(changed), /unknown stage "missing"/);
+});
+
+test('local configuration and workflow overlay are resolved', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'puppets-config-'));
   const frameworkRoot = path.join(root, 'framework');
   const callerRoot = path.join(root, 'caller');
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
   fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
-    path.join(frameworkRoot, 'config', 'lifecycle.json'),
-    JSON.stringify(lifecycle)
+    path.join(frameworkRoot, 'config', 'workflow.yml'),
+    workflowSource
   );
   fs.writeFileSync(
     path.join(callerRoot, '.puppets', 'config.json'),
     JSON.stringify({
       version: 1,
       approvalActors: ['JeffSteinbok'],
-      ignoreLabels: ['postmortem'],
+      ignoreLabels: ['external-process'],
     })
   );
   fs.writeFileSync(
-    path.join(callerRoot, '.puppets', 'lifecycle.json'),
-    JSON.stringify({ states: { ready: { color: '123456' } } })
+    path.join(callerRoot, '.puppets', 'workflow.yml'),
+    `spec:
+  stages:
+    - name: ready
+      label:
+        color: "123456"
+`
   );
 
   const resolved = resolveConfiguration({ frameworkRoot, callerRoot });
-  assert.deepEqual(resolved.config.ignoreLabels, ['postmortem']);
-  assert.equal(resolved.lifecycle.states.ready.color, '123456');
-  assert.equal(resolved.lifecycle.states.ready.label, 'puppets:ready');
+  const ready = resolved.workflow.stages.find(stage => stage.name === 'ready');
+  assert.deepEqual(resolved.config.ignoreLabels, ['external-process']);
+  assert.equal(String(ready.label.color), '123456');
+  assert.equal(ready.label.name, 'puppets:ready');
 });
 
 test('unknown local configuration fails closed', () => {
@@ -68,8 +122,8 @@ test('unknown local configuration fails closed', () => {
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
   fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
-    path.join(frameworkRoot, 'config', 'lifecycle.json'),
-    JSON.stringify(lifecycle)
+    path.join(frameworkRoot, 'config', 'workflow.yml'),
+    workflowSource
   );
   fs.writeFileSync(
     path.join(callerRoot, '.puppets', 'config.json'),

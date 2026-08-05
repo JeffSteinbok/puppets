@@ -33,7 +33,6 @@ before Puppets mutates an issue or pull request.
 | `conflictRetries` | `2` | Merge-conflict remediation attempts before human escalation. |
 | `reviewRetries` | `2` | Acceptance-review remediation cycles before escalation. |
 | `copilotModel` | `"auto"` | Copilot SDK model used by curation and acceptance review. |
-| `enableCuration` | `true` | Run read-only screening before implementation. |
 | `staleHours` | `72` | Age at which untouched issues return to the attention summary. |
 | `ignoreLabels` | `[]` | Repository-owned processes Puppets must leave alone. |
 
@@ -50,7 +49,6 @@ before Puppets mutates an issue or pull request.
   "maxInFlight": 2,
   "reviewRetries": 2,
   "ignoreLabels": [
-    "postmortem",
     "manual-only"
   ]
 }
@@ -62,27 +60,57 @@ before Puppets mutates an issue or pull request.
 entering its generic lifecycle. Ignored issues are excluded from triage, inbox reporting,
 assignment, and pull-request reconciliation.
 
-## Lifecycle overlay
+## Workflow DSL
 
-`.puppets/lifecycle.json` overlays the framework lifecycle by object key. Arrays
-replace the default array at that key. Protected state labels and `puppets:no-auto` cannot
-be removed or renamed.
+Puppets compiles a versioned, Goobers-style workflow definition before it performs any
+mutation. The built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml)
+declares named stages, handler kinds, outcome branches, labels, and profiles.
 
-For example, a repository can change display metadata without copying the full lifecycle:
+Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
+and helper labels merge by identity, so callers do not copy the full workflow.
 
-```json
-{
-  "states": {
-    "ready": {
-      "color": "7C3AED",
-      "description": "Approved and queued for the next available implementation slot."
-    }
-  }
-}
+```yaml
+spec:
+  labels:
+    controls:
+      - role: opt-out
+        name: automation:skip
+        color: "111111"
+        description: Exclude this item from automation.
+
+  stages:
+    - name: approved
+      label:
+        name: automation:approved
+    - name: ready
+      label:
+        color: "7C3AED"
+
+  profiles:
+    - name: incident-review
+      default: false
+      priority: 100
+      selector:
+        allLabels: [incident-review]
+      routes:
+        approved: claim
+      implementation:
+        prompt: incident-review
+        guidance: null
+        heading: Incident review instructions
 ```
 
-The resolver rejects duplicate labels, unknown transition targets, unsupported schema
-versions, and changes to protected state labels.
+The compiler rejects duplicate labels, dangling branches, unsupported DSL versions,
+unknown approval routes, missing security roles, and malformed profiles. Label names are
+policy data rather than runtime constants. The opt-out label can be renamed, but an
+`opt-out` role must always exist.
+
+### Profiles
+
+The default `basic` profile routes approved work through curation and then implementation.
+Profiles select issues by labels and can choose an approval branch, implementation prompt,
+trusted guidance file, and heading. Higher-priority matching profiles win; exactly one
+profile must be the default.
 
 ## Prompt replacement
 
@@ -102,6 +130,5 @@ Use prompt replacement for repository conventions, validation commands, generate
 or domain-specific acceptance evidence. Security rules remain in runtime code and cannot be
 replaced by a prompt.
 
-When an approved issue has the `postmortem` label, Puppets skips generic curation and uses
-`postmortem.md` for the coding-agent assignment. The framework supplies a default; checking
-in `.puppets/prompts/postmortem.md` replaces it for that repository.
+Prompts referenced by a profile do not need to exist in the framework. A caller may add a
+new `.puppets/prompts/<name>.md` file and select it from `.puppets/workflow.yml`.

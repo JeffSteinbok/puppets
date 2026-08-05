@@ -59,7 +59,7 @@ step.
 7. **A maintainer merges.** Puppets observes the merge and closes the lifecycle as
    `puppets:done`. Version 1 never auto-merges.
 
-## The lifecycle
+## The default `basic` workflow labels
 
 | State | Meaning |
 |---|---|
@@ -76,7 +76,9 @@ step.
 | `puppets:no-auto` | Absolute opt-out; Puppets must not touch the issue or linked PR. |
 
 The issue is authoritative. Labels mirrored onto a linked pull request are visibility
-projections and cannot advance the issue.
+projections and cannot advance the issue. Callers may rename these labels in
+`.puppets/workflow.yml`; the runtime follows stage and control roles rather than fixed
+label strings.
 
 ## Small in every repository, shared in one place
 
@@ -86,7 +88,7 @@ Each managed repository checks in:
 .github/workflows/puppets.yml
 .puppets/
   config.json
-  lifecycle.json       # optional overlay
+  workflow.yml        # optional versioned DSL overlay
   prompts/             # optional replacements
 ```
 
@@ -114,15 +116,15 @@ does not make those requests free.
 
 ## Data-driven, but not security-configurable
 
-The default `lifecycle.json` declares state labels, transition edges, in-flight accounting,
-pull-request projection, helper labels, and terminal behavior. A caller may overlay that
-data or replace step prompts from its trusted default branch.
+The default `workflow.yml` declares named stages, handler types, outcome branches, labels,
+profiles, in-flight accounting, pull-request projection, and terminal behavior. A caller
+may overlay that machine or add prompts from its trusted default branch.
 
 Configuration cannot weaken these runtime invariants:
 
 - no privileged work before verified approval provenance;
 - permission lookup failures fail closed;
-- `puppets:no-auto` suppresses all processing;
+- the configured opt-out label suppresses all processing;
 - fork or pull-request-head code never executes with write credentials;
 - issue, PR, diff, and check text is untrusted data, never instruction;
 - unknown transitions and invalid configuration are rejected before mutation; and

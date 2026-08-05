@@ -17,7 +17,10 @@ test('latest approval provenance is selected without mutating events', () => {
     { event: 'labeled', label: { name: 'puppets:approved' }, actor: { login: 'JeffSteinbok' } },
   ];
   const before = structuredClone(events);
-  assert.equal(findLatestApprovalEvent(events).actor.login, 'JeffSteinbok');
+  assert.equal(
+    findLatestApprovalEvent(events, 'puppets:approved').actor.login,
+    'JeffSteinbok'
+  );
   assert.deepEqual(events, before);
 });
 

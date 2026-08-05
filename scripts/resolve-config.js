@@ -7,22 +7,29 @@ const { resolveConfiguration } = require('../lib/config');
 const frameworkRoot = path.resolve(process.env.PUPPETS_FRAMEWORK_ROOT || '.');
 const callerRoot = path.resolve(process.env.PUPPETS_CALLER_ROOT || '.puppets-caller');
 const outputRoot = path.resolve(process.env.PUPPETS_RESOLVED_ROOT || '.puppets-resolved');
-const { config, lifecycle } = resolveConfiguration({ frameworkRoot, callerRoot });
+const { config, workflow } = resolveConfiguration({ frameworkRoot, callerRoot });
 
 fs.mkdirSync(path.join(outputRoot, 'prompts'), { recursive: true });
 fs.writeFileSync(
-  path.join(outputRoot, 'lifecycle.json'),
-  `${JSON.stringify(lifecycle, null, 2)}\n`
+  path.join(outputRoot, 'workflow.json'),
+  `${JSON.stringify(workflow, null, 2)}\n`
 );
 fs.writeFileSync(
   path.join(outputRoot, 'config.json'),
   `${JSON.stringify(config, null, 2)}\n`
 );
 
-for (const entry of fs.readdirSync(path.join(frameworkRoot, 'prompts'))) {
+const frameworkPrompts = path.join(frameworkRoot, 'prompts');
+const localPrompts = path.join(callerRoot, '.puppets', 'prompts');
+const promptEntries = new Set(fs.readdirSync(frameworkPrompts));
+if (fs.existsSync(localPrompts)) {
+  for (const entry of fs.readdirSync(localPrompts)) promptEntries.add(entry);
+}
+
+for (const entry of promptEntries) {
   if (!entry.endsWith('.md')) continue;
-  const local =   path.join(callerRoot, '.puppets', 'prompts', entry);
-  const source = fs.existsSync(local) ? local : path.join(frameworkRoot, 'prompts', entry);
+  const local = path.join(localPrompts, entry);
+  const source = fs.existsSync(local) ? local : path.join(frameworkPrompts, entry);
   const content = fs.readFileSync(source, 'utf8');
   if (Buffer.byteLength(content, 'utf8') > 20000) {
     throw new Error(`prompt ${entry} exceeds the 20 KB limit`);
@@ -39,10 +46,9 @@ if (envFile) {
     `CONFLICT_RETRIES=${config.conflictRetries}`,
     `REVIEW_RETRIES=${config.reviewRetries}`,
     `COPILOT_MODEL=${config.copilotModel}`,
-    `ENABLE_CURATION=${config.enableCuration}`,
     `PUPPETS_STALE_HOURS=${config.staleHours}`,
     `PUPPETS_IGNORE_LABELS=${config.ignoreLabels.join(',')}`,
-    `PUPPETS_LIFECYCLE_PATH=${path.join(outputRoot, 'lifecycle.json')}`,
+    `PUPPETS_WORKFLOW_PATH=${path.join(outputRoot, 'workflow.json')}`,
     `PUPPETS_PROMPTS_DIR=${path.join(outputRoot, 'prompts')}`,
   ];
   fs.appendFileSync(envFile, `${lines.join('\n')}\n`);
