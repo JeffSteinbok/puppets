@@ -1,0 +1,159 @@
+name: Puppets Reconcile
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: Report intended mutations without applying them
+        required: false
+        default: false
+        type: boolean
+      caller_workflow:
+        description: Caller workflow filename used for inbox reconciliation
+        required: false
+        default: puppets.yml
+        type: string
+    secrets:
+      token:
+        description: Optional repository-scoped token used when GITHUB_TOKEN cannot assign Copilot
+        required: false
+    outputs:
+      waiting_count:
+        description: Number of issues needing human attention
+        value: ${{ jobs.reconcile.outputs.waiting_count }}
+      waiting_message:
+        description: Markdown summary of issues needing attention
+        value: ${{ jobs.reconcile.outputs.waiting_message }}
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+  issues: write
+  pull-requests: write
+  copilot-requests: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    outputs:
+      waiting_count: ${{ steps.reconcile.outputs.waiting_count }}
+      waiting_message: ${{ steps.reconcile.outputs.waiting_message }}
+    steps:
+      - name: Resolve framework revision
+        id: framework
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const token = await core.getIDToken('puppets-framework');
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString('utf8')
+            );
+            const expectedWorkflow =
+              'JeffSteinbok/puppets/.github/workflows/reconcile.yml@';
+            if (!payload.job_workflow_ref?.startsWith(expectedWorkflow)) {
+              core.setFailed(`Unexpected reusable workflow: ${payload.job_workflow_ref}`);
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(payload.job_workflow_sha || '')) {
+              core.setFailed('GitHub did not provide the reusable workflow commit SHA.');
+              return;
+            }
+            core.setOutput('ref', payload.job_workflow_sha);
+
+      - name: Check out Puppets framework
+        uses: actions/checkout@v4
+        with:
+          repository: JeffSteinbok/puppets
+          ref: ${{ steps.framework.outputs.ref }}
+          path: .puppets-framework
+          persist-credentials: false
+
+      - name: Check out caller default branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.token || github.token }}
+          path: .puppets-caller
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .puppets-framework/package-lock.json
+
+      - name: Install locked runtime
+        working-directory: .puppets-framework
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Resolve trusted configuration
+        env:
+          PUPPETS_FRAMEWORK_ROOT: .puppets-framework
+          PUPPETS_CALLER_ROOT: .puppets-caller
+          PUPPETS_RESOLVED_ROOT: .puppets-resolved
+        run: node .puppets-framework/scripts/resolve-config.js
+
+      - name: Reconcile labels
+        uses: actions/github-script@v9
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        with:
+          github-token: ${{ secrets.token || github.token }}
+          script: |
+            const fs = require('fs');
+            const workflow = JSON.parse(fs.readFileSync('.puppets-resolved/workflow.json'));
+            const specs = [
+              ...workflow.stages
+                .filter(stage => stage.label)
+                .map(stage => ({
+                  name: stage.label.name,
+                  color: String(stage.label.color),
+                  description: stage.label.description,
+                })),
+              ...workflow.controlLabels.map(({ name, color, description }) =>
+                ({ name, color: String(color), description })),
+              ...workflow.helperLabels.map(({ name, color, description }) =>
+                ({ name, color: String(color), description })),
+            ];
+            const existing = new Map((await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              { ...context.repo, per_page: 100 }
+            )).map(label => [label.name, label]));
+            for (const spec of specs) {
+              const current = existing.get(spec.name);
+              if (!current) {
+                if (process.env.DRY_RUN !== 'true') {
+                  await github.rest.issues.createLabel({ ...context.repo, ...spec });
+                }
+              } else if (current.color.toLowerCase() !== spec.color.toLowerCase() ||
+                         (current.description || '') !== spec.description) {
+                if (process.env.DRY_RUN !== 'true') {
+                  await github.rest.issues.updateLabel({
+                    ...context.repo,
+                    name: spec.name,
+                    color: spec.color,
+                    description: spec.description,
+                  });
+                }
+              }
+            }
+
+      - name: Reconcile lifecycle
+        id: reconcile
+        uses: actions/github-script@v9
+        env:
+          PUPPETS_OWNER: ${{ github.repository_owner }}
+          PUPPETS_REPOSITORY: ${{ github.event.repository.name }}
+          PUPPETS_INBOX_WORKFLOW_ID: ${{ inputs.caller_workflow }}
+          PUPPETS_NODE_ROOT: .puppets-framework
+          DRY_RUN: ${{ inputs.dry_run }}
+          INBOX_FALLBACK_HOURS: "24"
+          COPILOT_TOKEN: ${{ github.token }}
+        with:
+          github-token: ${{ secrets.token || github.token }}
+          script: |
+            const reconcile = require('./.puppets-framework/src/reconcile.js');
+            await reconcile({ github, context, core });

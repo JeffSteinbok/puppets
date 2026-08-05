@@ -1,0 +1,38 @@
+name: Puppets
+
+on:
+  # Stagger the minute across repositories to spread API and model traffic.
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report intended mutations without applying them
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: puppets-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  # The reusable workflow cannot elevate beyond these caller-granted permissions.
+  actions: write
+  contents: read
+  # Lets the reusable workflow identify its exact GitHub-resolved commit.
+  id-token: write
+  issues: write
+  pull-requests: write
+  copilot-requests: write
+
+jobs:
+  reconcile:
+    # Use a release tag such as v1 for convenience, or a full commit SHA for strict pinning.
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
+    with:
+      dry_run: ${{ inputs.dry_run || false }}
+      caller_workflow: puppets.yml
+    secrets:
+      # Optional: add only if GITHUB_TOKEN cannot assign the Copilot coding agent.
+      token: ${{ secrets.PUPPETS_TOKEN }}

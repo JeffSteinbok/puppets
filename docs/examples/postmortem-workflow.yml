@@ -1,0 +1,22 @@
+# This overlay adds a specialized profile without copying the basic workflow.
+spec:
+  profiles:
+    - name: postmortem
+      default: false
+      priority: 100
+
+      # All listed labels must be present for this profile to match.
+      selector:
+        allLabels:
+          - postmortem
+
+      # "claim" is a named branch on the basic approval stage, so this profile skips
+      # generic curation after the normal human approval gate succeeds.
+      routes:
+        approved: claim
+
+      # The prompt may exist only in the caller repository.
+      implementation:
+        prompt: postmortem
+        guidance: null
+        heading: Puppets postmortem instructions
