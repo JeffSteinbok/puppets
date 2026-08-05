@@ -20,6 +20,8 @@ immutable commit SHA.
 1. Copy [`caller-template.yml`](caller-template.yml) to
    `.github/workflows/puppets.yml` in a public repository.
 2. Replace `FRAMEWORK_COMMIT_SHA` with an immutable commit from this repository.
+   The same SHA appears in both the workflow `uses` reference and its `framework_ref`
+   input so the called workflow can securely check out its packaged runtime.
 3. Add `.github/puppets/config.json`:
 
    ```json

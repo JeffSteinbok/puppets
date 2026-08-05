@@ -3,6 +3,10 @@ name: Puppets Reconcile
 on:
   workflow_call:
     inputs:
+      framework_ref:
+        description: Immutable Puppets commit SHA; must match the revision used in the caller's uses line
+        required: true
+        type: string
       dry_run:
         description: Report intended mutations without applying them
         required: false
@@ -43,9 +47,9 @@ jobs:
         id: framework
         shell: bash
         env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
+          FRAMEWORK_REF: ${{ inputs.framework_ref }}
         run: |
-          ref="${WORKFLOW_REF##*@}"
+          ref="$FRAMEWORK_REF"
           if [[ ! "$ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
             echo "::error::Puppets callers must pin reconcile.yml to an immutable commit SHA."
             exit 1
