@@ -1,4 +1,10 @@
-# Puppets
+# <img src="docs/assets/puppetslogo.png" alt="Puppets logo" width="48" align="absmiddle"> Puppets
+
+[![CI](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml)
+[![Deploy Pages](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml)
+[![Puppets Reconcile](https://github.com/JeffSteinbok/puppets/actions/workflows/reconcile.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/reconcile.yml)
+[![Website](https://img.shields.io/badge/website-puppets-2ea44f?logo=githubpages)](https://JeffSteinbok.github.io/puppets/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Puppets is repository-owned, data-driven GitHub issue-to-PR automation. Each managed
 repository checks in a small caller workflow that invokes this public framework at an

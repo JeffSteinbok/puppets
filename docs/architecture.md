@@ -144,49 +144,53 @@ Curation and the acceptance-review gate always run through the Copilot SDK regar
 
 ## State machine
 
-The basic workflow compiles to this graph. Branch names are declared outcomes, not model
-choices; trusted handlers emit an outcome and the compiled machine selects its target.
+The primary lifecycle is intentionally linear. A profile can skip curation and claim an
+approved issue directly; issues needing more detail wait before approval.
 
 <pre class="mermaid">
 stateDiagram-v2
+    direction LR
     state "needs-info" as needs_info
-    state "needs-work" as needs_work
     state "in-review" as in_review
-    state "needs-human" as needs_human
 
     [*] --> untracked
     untracked --> needs_info: needs-info
     untracked --> approved: approved label
     needs_info --> approved: approved label
-    approved --> curating: curate profile route
-    approved --> claimed: claim profile route
-    curating --> approved: retry
+    approved --> curating: curate
     curating --> ready: pass
-    curating --> needs_human: escalate
     ready --> claimed: claim
+    approved --> claimed: direct claim
     claimed --> verifying: verify
-    claimed --> needs_work: remediate
-    claimed --> needs_human: escalate
-    verifying --> verifying: retry
-    verifying --> needs_work: remediate
     verifying --> in_review: pass
-    verifying --> needs_human: escalate
-    needs_work --> verifying: verify
-    needs_work --> needs_work: retry
-    needs_work --> needs_human: escalate
-    in_review --> verifying: verify
-    in_review --> needs_work: remediate
-    in_review --> in_review: wait
-    in_review --> needs_human: escalate
-    needs_human --> approved: approve
-    needs_human --> ready: queue
-    claimed --> done: complete
-    verifying --> done: complete
-    needs_work --> done: complete
     in_review --> done: complete
-    needs_human --> done: complete
     done --> [*]
 </pre>
+
+Recovery paths are shown separately so they do not obscure the main flow. Retry outcomes
+remain in the current stage; actionable failures enter `needs-work`; policy decisions or
+exhausted retries enter `needs-human`.
+
+<pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    state "active stage" as active
+    state "needs-work" as needs_work
+    state "needs-human" as needs_human
+
+    active --> active: retry or wait
+    active --> needs_work: remediate
+    needs_work --> needs_work: retry
+    needs_work --> active: verify again
+    active --> needs_human: escalate
+    needs_work --> needs_human: escalate
+    needs_human --> active: approve or queue
+    active --> done: complete
+    needs_human --> done: complete
+</pre>
+
+Branch names are declared outcomes, not model choices: trusted handlers emit an outcome and
+the compiled machine selects its target.
 
 ## Trust boundary
 

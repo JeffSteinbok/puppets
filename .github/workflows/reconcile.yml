@@ -243,6 +243,7 @@ jobs:
           clean: false
 
       - name: Prepare implementation branch
+        id: branch
         env:
           PUPPETS_BRANCH: ${{ matrix.branch }}
         run: |
@@ -252,6 +253,7 @@ jobs:
           else
             git checkout -B "$PUPPETS_BRANCH"
           fi
+          echo "start_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # For a fresh assignment, the prompt is exactly what a human already sees: the issue's
       # own title/body plus the implementation-instructions comment already posted on it (base
@@ -312,6 +314,7 @@ jobs:
           PUPPETS_JOB_PROVIDER: ${{ matrix.provider }}
           PUPPETS_JOB_MODE: ${{ matrix.mode }}
           PUPPETS_JOB_BRANCH: ${{ matrix.branch }}
+          PUPPETS_JOB_START_SHA: ${{ steps.branch.outputs.start_sha }}
           PUPPETS_CALLER_ROOT: .
         with:
           github-token: ${{ secrets.token || github.token }}

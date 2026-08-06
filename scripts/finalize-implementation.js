@@ -24,6 +24,7 @@
  *   PUPPETS_JOB_PROVIDER      — `claude` or `codex`.
  *   PUPPETS_JOB_MODE          — `assign` or `remediate`.
  *   PUPPETS_JOB_BRANCH        — deterministic branch name (puppets/issue-<n>).
+ *   PUPPETS_JOB_START_SHA     — commit checked out before the provider action ran.
  *   PUPPETS_CALLER_ROOT       — working directory containing the caller repository checkout.
  */
 module.exports = async ({ github, context, core }) => {
@@ -33,6 +34,7 @@ module.exports = async ({ github, context, core }) => {
     commitMessage,
     pullRequestTitle,
     pullRequestBody,
+    hasImplementationChanges,
   } = require('../src/providers/implementation-job');
 
   const job = parseJob({
@@ -49,12 +51,24 @@ module.exports = async ({ github, context, core }) => {
   const owner = context.repo.owner;
   const repo = job.repo || context.repo.repo;
   const cwd = process.env.PUPPETS_CALLER_ROOT || '.';
+  const startSha = process.env.PUPPETS_JOB_START_SHA || '';
+  if (!/^[0-9a-f]{40}$/i.test(startSha)) {
+    throw new Error('PUPPETS_JOB_START_SHA must be a full commit SHA');
+  }
 
   const git = (...args) =>
     execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 
+  const currentBranch = git('branch', '--show-current').trim();
+  if (currentBranch !== job.branch) {
+    throw new Error(
+      `implementation provider left the checkout on "${currentBranch}", expected "${job.branch}"`
+    );
+  }
+
+  const headSha = git('rev-parse', 'HEAD').trim();
   const status = git('status', '--porcelain').trim();
-  if (!status) {
+  if (!hasImplementationChanges({ startSha, headSha, status })) {
     const message = job.mode === 'assign'
       ? `Puppets asked the \`${job.provider}\` implementation provider to work on this issue, ` +
         'but it made no file changes. Escalating for a human to review the prompt or issue scope.'
@@ -69,10 +83,12 @@ module.exports = async ({ github, context, core }) => {
     return;
   }
 
-  git('config', 'user.name', 'github-actions[bot]');
-  git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com');
-  git('add', '-A');
-  git('commit', '-m', commitMessage(job));
+  if (status) {
+    git('config', 'user.name', 'github-actions[bot]');
+    git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com');
+    git('add', '-A');
+    git('commit', '-m', commitMessage(job));
+  }
   git('push', 'origin', `HEAD:refs/heads/${job.branch}`);
 
   if (job.mode === 'remediate') {

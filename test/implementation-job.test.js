@@ -8,6 +8,7 @@ const {
   commitMessage,
   pullRequestTitle,
   pullRequestBody,
+  hasImplementationChanges,
 } = require('../src/providers/implementation-job');
 
 const assignJob = {
@@ -126,4 +127,23 @@ test('pullRequestBody links the issue and names the provider', () => {
   const body = pullRequestBody(parseJob(assignJob));
   assert.match(body, /Closes #7\./);
   assert.match(body, /`claude` provider/);
+});
+
+test('hasImplementationChanges accepts workspace edits or provider commits', () => {
+  const startSha = 'a'.repeat(40);
+  assert.equal(hasImplementationChanges({
+    startSha,
+    headSha: startSha,
+    status: ' M src/index.js',
+  }), true);
+  assert.equal(hasImplementationChanges({
+    startSha,
+    headSha: 'b'.repeat(40),
+    status: '',
+  }), true);
+  assert.equal(hasImplementationChanges({
+    startSha,
+    headSha: startSha,
+    status: '',
+  }), false);
 });

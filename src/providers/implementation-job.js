@@ -81,10 +81,15 @@ function pullRequestBody(job) {
   ].join('\n');
 }
 
+function hasImplementationChanges({ startSha, headSha, status }) {
+  return startSha !== headSha || Boolean(status.trim());
+}
+
 module.exports = {
   parseJob,
   buildAssignPrompt,
   commitMessage,
   pullRequestTitle,
   pullRequestBody,
+  hasImplementationChanges,
 };
