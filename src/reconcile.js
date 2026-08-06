@@ -23,11 +23,24 @@
  * currently hold write/triage access on that repo (see `validApproval`). A single
  * configured opt-out label takes an item completely out of scope.
  *
+ * Implementation providers: each workflow profile selects who performs the implementation
+ * step (`profile.implementation.provider`, validated against the fixed allowlist in
+ * `src/providers/providers.js`: `copilot` | `claude` | `codex`). Copilot is assigned directly as a
+ * GitHub bot and works entirely out of band. Claude and Codex are official GitHub Actions
+ * that only run inside a workflow job, so this reconciler cannot invoke them itself — for
+ * those providers it emits an entry in the `implementation_jobs` output instead, which the
+ * `implement` job in `reconcile.yml` consumes to run the action against a checked-out branch
+ * and then deterministically commit, push, and open or update the linked pull request.
+ * Curation and acceptance review always call the Copilot SDK directly (`callCopilot`)
+ * regardless of a profile's implementation provider — reasoning/judgment steps remain
+ * Copilot-only; only the implementation step is provider-neutral. See docs/security.md.
+ *
  * Configuration is passed entirely through environment variables (wired up by the
  * calling workflow):
  *   PUPPETS_OWNER            — caller repository owner (defaults to workflow context).
  *   PUPPETS_REPOSITORY       — caller repository name (defaults to workflow context).
- *   PUPPETS_APPROVAL_ACTORS  — newline-separated allowlist of logins permitted to approve.
+ *   PUPPETS_APPROVAL_ACTORS  — comma- or newline-separated allowlist of logins permitted to
+ *                              approve (resolve-config.js emits this comma-joined).
  *   PUPPETS_INBOX_WORKFLOW_ID — this workflow's file id, used to find the previous run.
  *   MAX_ISSUES_PER_REPO      — cap on new Copilot assignments per repo per run.
  *   MAX_IN_FLIGHT_PER_REPO   — cap on stages marked countsAsInFlight in workflow.yml.
@@ -35,6 +48,10 @@
  *                              before the item is escalated to a human.
  *   REVIEW_RETRIES           — acceptance-review remediation cycles before escalation.
  *   COPILOT_MODEL            — model name for Copilot SDK curation and acceptance sessions.
+ *   CLAUDE_MODEL             — optional model override for the `claude` implementation
+ *                              provider; empty means the action's own default.
+ *   CODEX_MODEL              — optional model override for the `codex` implementation
+ *                              provider; empty means the action's own default.
  *   INBOX_FALLBACK_HOURS     — lookback window for the "new issues" digest on the first run.
  *   PUPPETS_STALE_HOURS      — age threshold (in hours) after which an un-triaged issue is
  *                              re-surfaced in the digest as stale (default: 72).
@@ -50,6 +67,8 @@ module.exports = async ({ github, context, core }) => {
   } = require('./approval');
   const { createStateController } = require('./state');
   const { createMachineModel } = require('./workflow');
+  const { usesAssignableBot, implementationBranchName } = require('./providers/providers');
+  const { parseEnvList } = require('./env-list');
   // ── Configuration (all inputs arrive as environment variables) ──
   const owner = process.env.PUPPETS_OWNER?.trim() || context.repo.owner;
   const dryRun = process.env.DRY_RUN === 'true';
@@ -59,6 +78,10 @@ module.exports = async ({ github, context, core }) => {
   const conflictRetries = Math.max(1, Number.parseInt(process.env.CONFLICT_RETRIES, 10) || 2);
   const reviewRetries = Math.max(1, Number.parseInt(process.env.REVIEW_RETRIES, 10) || 2);
   const copilotModel = process.env.COPILOT_MODEL?.trim() || 'auto';
+  // Model overrides for the action-driven providers. Unlike copilotModel, empty is valid
+  // and simply defers to that provider action's own default model.
+  const claudeModel = process.env.CLAUDE_MODEL?.trim() || '';
+  const codexModel = process.env.CODEX_MODEL?.trim() || '';
   const repos = [process.env.PUPPETS_REPOSITORY?.trim() || context.repo.repo];
   // The token's own identity — used to recognise comments/assignments this
   // automation itself created (so it updates its own markers rather than duplicating).
@@ -74,17 +97,18 @@ module.exports = async ({ github, context, core }) => {
   }
   // Logins permitted to approve work. Membership here is necessary but NOT
   // sufficient — the approver's live repo permission is re-checked at approval time.
+  // Accepts both comma and newline separators (src/env-list.js) because
+  // scripts/resolve-config.js emits this as a comma-joined list.
   const approvalActors = new Set(
-    (process.env.PUPPETS_APPROVAL_ACTORS || '')
-      .split(/[\n,]/)
-      .map(actor => actor.trim().toLowerCase())
-      .filter(Boolean)
+    parseEnvList(process.env.PUPPETS_APPROVAL_ACTORS).map(actor => actor.toLowerCase())
   );
   // Repo permission levels that count as "trusted enough to approve".
   const approvalPermissions = new Set(['admin', 'maintain', 'push', 'write', 'triage']);
   // Hidden HTML markers that let us find (and update in place) the single
-  // instruction comment this automation posts for a given step.
-  const implementationMarker = '<!-- puppets:implementation-instructions:v1 -->';
+  // instruction comment this automation posts for a given step. The implementation marker
+  // is shared with the `implement` job (src/providers/markers.js), which reads this same comment back
+  // to build the claude/codex provider prompt.
+  const { IMPLEMENTATION_MARKER: implementationMarker } = require('./providers/markers');
   const curationMarker = '<!-- puppets:curation:v1 -->';
   const acceptanceReviewMarker = '<!-- puppets:acceptance-review:v1 -->';
 
@@ -178,12 +202,7 @@ module.exports = async ({ github, context, core }) => {
     inboxSince = new Date(Date.now() - inboxFallbackHours * 3600 * 1000);
     core.warning(`Could not read prior run time (${error.message}); using ${inboxFallbackHours}h fallback.`);
   }
-  const ignoredLabels = new Set(
-    (process.env.PUPPETS_IGNORE_LABELS || '')
-      .split(/[\n,]/)
-      .map(label => label.trim())
-      .filter(Boolean)
-  );
+  const ignoredLabels = new Set(parseEnvList(process.env.PUPPETS_IGNORE_LABELS));
   const isIgnored = labels =>
     labels.has(optOutLabel) || [...ignoredLabels].some(label => labels.has(label));
   const {
@@ -564,6 +583,74 @@ module.exports = async ({ github, context, core }) => {
       }`, { assignableId: pr.id, actorIds });
     if (directive) {
       await writeComment(pr.id, null, directive);
+    }
+  }
+
+  // ── Provider-neutral implementation dispatch ─────────────────────────────────
+  //
+  // `copilot` is assigned directly and works entirely out of band (unchanged from before
+  // providers existed). `claude` and `codex` are GitHub Actions that can only run as a
+  // `uses:` step in workflow YAML, so this reconciler cannot invoke them itself. Instead it
+  // appends a small, non-secret job descriptor here; `reconcile.yml`'s `implement` job reads
+  // the `implementation_jobs` output (below) to run the action against a checked-out branch
+  // and deterministically commit, push, and open or update the linked pull request. Every
+  // field here is derived from trusted runtime state (issue number, resolved profile,
+  // pinned model name) — never copied verbatim from issue/PR body text.
+  const implementationJobs = [];
+  function queueImplementationJob({ repo, issue, provider, mode, prNumber, branch, directive }) {
+    implementationJobs.push({
+      repo,
+      issueNumber: issue.number,
+      prNumber: prNumber ?? null,
+      provider,
+      mode, // 'assign' (no PR yet) | 'remediate' (push follow-up commits to an open PR)
+      branch: branch || implementationBranchName(issue.number),
+      directive: directive || null,
+      model: provider === 'claude' ? claudeModel : provider === 'codex' ? codexModel : '',
+    });
+  }
+
+  // Start (or resume) implementation work on an approved/ready issue.
+  async function beginImplementation(repo, issue, profile, botIdRef) {
+    const provider = profile.implementation.provider;
+    if (usesAssignableBot(provider)) {
+      if (!dryRun) {
+        botIdRef.id ??= await getCopilotBotId(repo);
+        if (!botIdRef.id) {
+          throw new Error(`Copilot coding agent is not assignable in ${owner}/${repo}`);
+        }
+        await assignCopilot(issue, botIdRef.id);
+      }
+      return;
+    }
+    if (!dryRun) {
+      queueImplementationJob({ repo, issue, provider, mode: 'assign' });
+    }
+  }
+
+  // Ask the provider already working an issue's PR to address a conflict or a remediation
+  // directive. For Copilot this re-asserts assignment (as before); for the action-driven
+  // providers this queues another `implement` job run against the existing PR branch. When
+  // `required` is true (acceptance-review remediation, which is about to move the item to
+  // `needs-work`) an unassignable Copilot bot throws so the caller can stay in `verifying`
+  // instead; when `required` is false (conflict retries, which already tolerate a skipped
+  // attempt) it silently no-ops instead, matching the prior Copilot-only behavior exactly.
+  async function reprompt(repo, issue, pr, botIdRef, directive, { required = false } = {}) {
+    const profile = resolveProfile(issueLabels(issue));
+    const provider = profile.implementation.provider;
+    if (usesAssignableBot(provider)) {
+      botIdRef.id ??= await getCopilotBotId(repo);
+      if (!botIdRef.id) {
+        if (required) throw new Error('Copilot is not assignable');
+        return;
+      }
+      await repromptCopilot(repo, pr, botIdRef.id, directive);
+      return;
+    }
+    if (!dryRun) {
+      queueImplementationJob({
+        repo, issue, provider, mode: 'remediate', prNumber: pr.number, branch: pr.headRefName, directive,
+      });
     }
   }
 
@@ -1023,21 +1110,21 @@ module.exports = async ({ github, context, core }) => {
       } else if (existing.decision === 'needs-changes') {
         if (currentStateName(repo, issue) === 'verifying') {
           try {
-            botIdRef.id ??= await getCopilotBotId(repo);
-            if (!botIdRef.id) throw new Error('Copilot is not assignable');
-            await repromptCopilot(
+            await reprompt(
               repo,
+              issue,
               pr,
-              botIdRef.id,
+              botIdRef,
               [
                 prompts.review,
                 'Address the blocking findings in the Puppets acceptance review above,',
                 'update tests as needed, and push the fixes to this branch.',
-              ].filter(Boolean).join('\n')
+              ].filter(Boolean).join('\n'),
+              { required: true }
             );
           } catch (error) {
             core.warning(
-              `Could not reprompt Copilot for ${repo}#${pr.number}: ${error.message}. ` +
+              `Could not reprompt for ${repo}#${pr.number}: ${error.message}. ` +
               'Leaving the issue and PR in verifying.'
             );
             return;
@@ -1124,31 +1211,23 @@ module.exports = async ({ github, context, core }) => {
       return;
     }
 
-    if (verdict.decision === 'needs-changes') {
-      try {
-        botIdRef.id ??= await getCopilotBotId(repo);
-        if (!botIdRef.id) throw new Error('Copilot is not assignable');
-      } catch (error) {
-        core.warning(`${repo}#${pr.number}: ${error.message}; remaining in verifying.`);
-        return;
-      }
-    }
-
     if (verdict.decision === 'pass') {
       console.log(`#${issue.number}: PR #${pr.number} acceptance passed -> in-review`);
       await markAcceptancePassed(repo, issue, pr);
     } else if (verdict.decision === 'needs-changes') {
       console.log(`#${issue.number}: PR #${pr.number} acceptance needs changes -> needs-work`);
       try {
-        await repromptCopilot(
+        await reprompt(
           repo,
+          issue,
           pr,
-          botIdRef.id,
-          remediationDirective(verdict, remediationCount)
+          botIdRef,
+          remediationDirective(verdict, remediationCount),
+          { required: true }
         );
       } catch (error) {
         core.warning(
-          `Could not reprompt Copilot for ${repo}#${pr.number}: ${error.message}. ` +
+          `Could not reprompt for ${repo}#${pr.number}: ${error.message}. ` +
           'Leaving the issue and PR in verifying.'
         );
         return;
@@ -1231,13 +1310,10 @@ module.exports = async ({ github, context, core }) => {
         return;
       } else {
         const next = attempts + 1;
-        console.log(`#${issue.number}: PR #${pr.number} conflicting -> Copilot remediation ${next}/${conflictRetries}`);
-        botIdRef.id ??= await getCopilotBotId(repo);
-        if (botIdRef.id) {
-          await repromptCopilot(repo, pr, botIdRef.id,
-            render(prompts.conflict, { attempt: next, total: conflictRetries }));
-        }
-        await setConflictAttempts(repo, pr.id, next, 'Asked Copilot to resolve the conflict on its branch.', commentNodeId);
+        console.log(`#${issue.number}: PR #${pr.number} conflicting -> remediation ${next}/${conflictRetries}`);
+        await reprompt(repo, issue, pr, botIdRef,
+          render(prompts.conflict, { attempt: next, total: conflictRetries }));
+        await setConflictAttempts(repo, pr.id, next, 'Asked the implementation provider to resolve the conflict on its branch.', commentNodeId);
         await setLinkedState(repo, issue, pr, 'needs-work');
         return;
       }
@@ -1296,7 +1372,9 @@ module.exports = async ({ github, context, core }) => {
       stateMetadataByName.get(currentStateName(repo, issue))?.countsAsInFlight
     ).length;
     let assignedInRepo = 0;
-    let botId;
+    // Shared per-repo Copilot bot id cache, reused for both initial assignment and later
+    // in-flight reprompting so a repo never looks it up more than once per run.
+    const botIdRef = { id: undefined };
 
     for (const issue of issues) {
       if (issue.pull_request || isBotFiled(issue)) continue;
@@ -1351,18 +1429,12 @@ module.exports = async ({ github, context, core }) => {
           );
           if (!alreadyAssigned) {
             await upsertProfileInstructions(profile, repo, issue, defaultBranch);
-            if (!dryRun) {
-              botId ??= await getCopilotBotId(repo);
-              if (!botId) {
-                throw new Error(`Copilot coding agent is not assignable in ${owner}/${repo}`);
-              }
-              await assignCopilot(issue, botId);
-            }
+            await beginImplementation(repo, issue, profile, botIdRef);
           }
           await setState(repo, issue, routeTarget);
           assignedInRepo++;
           assigned++;
-          console.log(`  ${dryRun ? 'would assign' : 'assigned'} Copilot`);
+          console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${profile.implementation.provider}`);
           continue;
         }
 
@@ -1409,26 +1481,21 @@ module.exports = async ({ github, context, core }) => {
           ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
         );
         console.log(`#${issue.number}: ready → claiming`);
+        const readyProfile = resolveProfile(labels);
 
         if (!alreadyAssigned) {
           try {
-            await upsertProfileInstructions(resolveProfile(labels), repo, issue, defaultBranch);
+            await upsertProfileInstructions(readyProfile, repo, issue, defaultBranch);
           } catch (error) {
             core.warning(`  implementation instructions failed for ${repo}#${issue.number}: ${error.message}`);
           }
-          if (!dryRun) {
-            botId ??= await getCopilotBotId(repo);
-            if (!botId) {
-              throw new Error(`Copilot coding agent is not assignable in ${owner}/${repo}`);
-            }
-            await assignCopilot(issue, botId);
-          }
+          await beginImplementation(repo, issue, readyProfile, botIdRef);
         }
 
         await setState(repo, issue, 'claimed');
         assignedInRepo++;
         assigned++;
-        console.log(`  ${dryRun ? 'would assign' : 'assigned'} Copilot`);
+        console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${readyProfile.implementation.provider}`);
         continue;
       }
 
@@ -1455,11 +1522,11 @@ module.exports = async ({ github, context, core }) => {
       }
     }
 
-    // After triage/approval, advance items already handed to Copilot by polling
-    // their PR: claimed -> verifying -> in-review -> done, plus keep the PR
-    // mergeable (update stale branches, loop Copilot on conflicts). Query open AND
-    // closed issues, since a merged PR closes the issue before we mark it done.
-    const botIdRef = { id: botId };
+    // After triage/approval, advance items already handed off by polling their PR:
+    // claimed -> verifying -> in-review -> done, plus keep the PR mergeable (update stale
+    // branches, loop the assigned provider on conflicts). Reuses this repo's botIdRef so a
+    // Copilot lookup already made above is not repeated. Query open AND closed issues, since
+    // a merged PR closes the issue before we mark it done.
     for (const issue of trackedPrByNumber.values()) {
       if (isIgnored(issueLabels(issue))) continue;
       await reconcileInFlight(repo, issue, reviewInstructions, botIdRef);
@@ -1487,6 +1554,12 @@ module.exports = async ({ github, context, core }) => {
 
   core.setOutput('waiting_count', String(attentionCount));
   core.setOutput('waiting_message', waitingMessage);
+  // Consumed by the `implement` job in reconcile.yml, which runs the claude/codex action for
+  // each entry against a checked-out branch and deterministically finalizes a commit, push,
+  // and pull request. Empty (`[]`) whenever every profile in play uses the copilot provider,
+  // in which case the job's `if:` condition skips it entirely — zero added cost or risk for
+  // callers who never opt into an alternate provider.
+  core.setOutput('implementation_jobs', JSON.stringify(implementationJobs));
   await core.summary
     .addHeading('Puppets lifecycle')
     .addRaw(`Assigned: ${assigned}\n\nNeeds your attention: ${attentionCount}\n\n${waitingMessage}`)

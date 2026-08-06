@@ -1,6 +1,7 @@
 'use strict';
 
 const YAML = require('yaml');
+const { isValidProvider } = require('./providers/providers');
 
 const API_VERSION = 'puppets.dev/v1alpha1';
 const DSL_VERSION = '1.0';
@@ -92,7 +93,13 @@ function validateProfile(profile) {
       !profile.implementation.heading.trim() ||
       (profile.implementation.guidance !== null &&
        (typeof profile.implementation.guidance !== 'string' ||
-        !/^[a-z0-9-]+$/.test(profile.implementation.guidance)))) {
+        !/^[a-z0-9-]+$/.test(profile.implementation.guidance))) ||
+      // The provider selects which agent performs the implementation step. It is validated
+      // against a fixed, code-defined allowlist (src/providers/providers.js) rather than accepted as
+      // free-form text, so a caller's `.puppets/workflow.yml` overlay can never name an
+      // arbitrary GitHub Action to run.
+      typeof profile.implementation.provider !== 'string' ||
+      !isValidProvider(profile.implementation.provider)) {
     throw new Error(`invalid workflow profile "${profile?.name || '(unnamed)'}"`);
   }
   const selector = profile.selector || {};
@@ -183,6 +190,13 @@ function compileWorkflow(definition) {
 
   const profiles = definition.spec.profiles || [];
   if (profiles.length === 0) throw new Error('workflow must define profiles');
+  // `provider` defaults to `copilot` so existing profiles (and caller overlays written
+  // before providers existed) keep behaving exactly as before without naming it explicitly.
+  for (const profile of profiles) {
+    if (profile?.implementation && profile.implementation.provider === undefined) {
+      profile.implementation.provider = 'copilot';
+    }
+  }
   profiles.forEach(validateProfile);
   if (new Set(profiles.map(profile => profile.name)).size !== profiles.length) {
     throw new Error('workflow profile names must be unique');

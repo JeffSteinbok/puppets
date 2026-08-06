@@ -80,7 +80,7 @@ behind the single `uses` reference. This works for both release tags and commit 
 
 | Permission | Used for |
 |---|---|
-| `contents: read` | Read trusted caller configuration and prompts from the default branch. |
+| `contents: read` | Read trusted caller configuration and prompts from the default branch. Change to `write` only if a profile uses the `claude` or `codex` implementation provider — see step 9. |
 | `id-token: write` | Read GitHub's signed reusable-workflow commit claim. |
 | `issues: write` | Reconcile labels, comments, assignments, and issue state. |
 | `pull-requests: write` | Track linked PRs, update branches, and maintain projected state. |
@@ -191,6 +191,53 @@ owns the approved assignment and lifecycle after that.
 
 Because configuration and durable state remain in the caller repository and GitHub labels,
 upgrading the shared runtime does not migrate an external database.
+
+## 9. Use Claude Code or Codex for implementation (optional)
+
+By default every profile implements approved issues with the GitHub Copilot coding agent.
+A profile can instead set `implementation.provider: claude` or `implementation.provider:
+codex` (see [Configuration → Implementation providers](configuration.html)). Curation and
+acceptance review always stay on Copilot regardless of this setting — only the
+implementation step changes.
+
+1. **Grant write access.** Set `permissions.contents: write` in the caller workflow. The
+   reusable workflow's `implement` job needs it to push a branch and open a pull request;
+   it can never be granted more than the caller allows here.
+2. **Add the provider secret(s)** as repository Actions secrets, and pass them through in
+   `secrets:`:
+   - `claude`: either `ANTHROPIC_API_KEY` (a metered Anthropic API key) **or**
+     `CLAUDE_CODE_OAUTH_TOKEN`. Claude Pro/Max subscribers can mint the latter by running
+     `claude setup-token` locally and pasting the result into the repository secret — this
+     avoids a separate metered API key. Do not attempt to copy a local `~/.claude` or
+     ChatGPT browser session into CI; that login is local-only and out of scope for a
+     GitHub Actions runner.
+   - `codex`: `OPENAI_API_KEY`. Codex CLI's ChatGPT-subscription browser login is likewise
+     local-only; OpenAI's own guidance for CI/CD is to use an API key, which is what
+     `openai/codex-action` accepts.
+3. **Uncomment the matching secret line(s)** in your caller workflow (see
+   `caller-template.yml`):
+
+   ```yaml
+   secrets:
+     token: ${{ secrets.PUPPETS_TOKEN }}
+     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+     # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+     # openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+   ```
+
+4. **Test with a dry run first.** `dry_run: true` never queues a claude/codex job and never
+   invokes either provider action or spends a token/credit — `reconcile.js` only decides
+   what it *would* do. Confirm the dry-run summary shows the issue would be claimed under
+   the expected profile before running live.
+5. **Run live and watch the `implement` job.** Approve one low-risk issue under the
+   claude/codex profile, run `workflow_dispatch` with `dry_run: false`, and use
+   `gh run watch` to confirm the `implement` job runs, the provider action completes, and a
+   **draft** pull request appears linked to the issue. It goes through the same CI and
+   acceptance-review gates as a Copilot-authored PR before a maintainer takes it out of
+   draft.
+
+See [Security → Implementation providers](security.html) for the trust boundaries and
+residual risks of this feature.
 
 ## Complete examples
 

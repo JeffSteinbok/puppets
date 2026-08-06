@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml)
 [![Deploy Pages](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml)
-[![Puppets Reconcile](https://github.com/JeffSteinbok/puppets/actions/workflows/reconcile.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/reconcile.yml)
 [![Website](https://img.shields.io/badge/website-puppets-2ea44f?logo=githubpages)](https://JeffSteinbok.github.io/puppets/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

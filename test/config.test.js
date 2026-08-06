@@ -6,8 +6,10 @@ const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  DEFAULT_CONFIG,
   mergeObjects,
   resolveConfiguration,
+  validateConfig,
 } = require('../src/config');
 const {
   compileWorkflow,
@@ -80,6 +82,38 @@ test('workflow rejects dangling branches', () => {
   assert.throws(() => compileWorkflow(changed), /unknown stage "missing"/);
 });
 
+test('implementation.provider defaults to copilot when omitted', () => {
+  const changed = structuredClone(workflowDefinition);
+  delete changed.spec.profiles.find(p => p.name === 'basic').implementation.provider;
+  const machine = compileWorkflow(changed);
+  assert.equal(
+    resolveProfile(machine, new Set()).implementation.provider,
+    'copilot'
+  );
+});
+
+test('implementation.provider accepts claude and codex', () => {
+  for (const provider of ['claude', 'codex']) {
+    const changed = structuredClone(workflowDefinition);
+    changed.spec.profiles.find(p => p.name === 'basic').implementation.provider = provider;
+    const machine = compileWorkflow(changed);
+    assert.equal(resolveProfile(machine, new Set()).implementation.provider, provider);
+  }
+});
+
+test('implementation.provider rejects a name outside the closed allowlist', () => {
+  const changed = structuredClone(workflowDefinition);
+  changed.spec.profiles.find(p => p.name === 'basic').implementation.provider = 'gemini';
+  assert.throws(() => compileWorkflow(changed), /invalid workflow profile/);
+});
+
+test('implementation.provider rejects an arbitrary action reference', () => {
+  const changed = structuredClone(workflowDefinition);
+  changed.spec.profiles.find(p => p.name === 'basic').implementation.provider =
+    'some-org/some-action@v1';
+  assert.throws(() => compileWorkflow(changed), /invalid workflow profile/);
+});
+
 test('local configuration and workflow overlay are resolved', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'puppets-config-'));
   const frameworkRoot = path.join(root, 'framework');
@@ -137,5 +171,42 @@ test('unknown local configuration fails closed', () => {
   assert.throws(
     () => resolveConfiguration({ frameworkRoot, callerRoot }),
     /unknown config key "unsupported"/
+  );
+});
+
+test('claudeModel and codexModel default to empty strings and may be overridden', () => {
+  assert.equal(DEFAULT_CONFIG.claudeModel, '');
+  assert.equal(DEFAULT_CONFIG.codexModel, '');
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'puppets-config-'));
+  const frameworkRoot = path.join(root, 'framework');
+  const callerRoot = path.join(root, 'caller');
+  fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
+  fs.writeFileSync(path.join(frameworkRoot, 'config', 'workflow.yml'), workflowSource);
+  fs.writeFileSync(
+    path.join(callerRoot, '.puppets', 'config.json'),
+    JSON.stringify({
+      version: 1,
+      approvalActors: ['JeffSteinbok'],
+      claudeModel: 'claude-opus-4',
+      codexModel: 'o4-mini',
+    })
+  );
+
+  const resolved = resolveConfiguration({ frameworkRoot, callerRoot });
+  assert.equal(resolved.config.claudeModel, 'claude-opus-4');
+  assert.equal(resolved.config.codexModel, 'o4-mini');
+});
+
+test('claudeModel and codexModel must be strings', () => {
+  const base = { ...DEFAULT_CONFIG, approvalActors: ['JeffSteinbok'] };
+  assert.throws(
+    () => validateConfig(mergeObjects(base, { claudeModel: 123 })),
+    /claudeModel must be a string/
+  );
+  assert.throws(
+    () => validateConfig(mergeObjects(base, { codexModel: null })),
+    /codexModel must be a string/
   );
 });

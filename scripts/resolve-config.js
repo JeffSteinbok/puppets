@@ -46,6 +46,8 @@ if (envFile) {
     `CONFLICT_RETRIES=${config.conflictRetries}`,
     `REVIEW_RETRIES=${config.reviewRetries}`,
     `COPILOT_MODEL=${config.copilotModel}`,
+    `CLAUDE_MODEL=${config.claudeModel}`,
+    `CODEX_MODEL=${config.codexModel}`,
     `PUPPETS_STALE_HOURS=${config.staleHours}`,
     `PUPPETS_IGNORE_LABELS=${config.ignoreLabels.join(',')}`,
     `PUPPETS_WORKFLOW_PATH=${path.join(outputRoot, 'workflow.json')}`,

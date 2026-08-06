@@ -53,11 +53,15 @@ spec:
       # Route names select a branch declared by the approval stage below.
       routes:
         approved: curate
-      # Implementation controls the resolved prompt and optional trusted repository guidance.
+      # Implementation controls the resolved prompt, optional trusted repository guidance,
+      # and which agent performs the implementation step. `provider` is validated against a
+      # fixed code-defined allowlist (copilot | claude | codex); it defaults to `copilot`
+      # when omitted, so existing overlays remain valid without change.
       implementation:
         prompt: implementation
         guidance: implementation
         heading: Puppets implementation instructions
+        provider: copilot
 
   # Stages form the compiled state machine. Every branch value must name another stage.
   # Handlers are trusted runtime implementations; YAML selects them but cannot inject code.
