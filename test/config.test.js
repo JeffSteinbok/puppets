@@ -34,6 +34,8 @@ test('arrays replace while ordinary objects merge by key', () => {
 
 test('workflow overlays merge stages, labels, and profiles by identity', () => {
   const overlay = parseWorkflow(`
+metadata:
+  name: incident-review
 spec:
   labels:
     controls:
@@ -61,6 +63,7 @@ spec:
 
   const machine = compileWorkflow(mergeWorkflow(workflowDefinition, overlay));
   const model = createMachineModel(machine);
+  assert.equal(machine.name, 'incident-review');
   assert.equal(model.approvalLabel, 'automation:approved');
   assert.equal(model.optOutLabel, 'automation:skip');
   assert.equal(

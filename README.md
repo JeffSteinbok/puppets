@@ -25,7 +25,7 @@ to use Copilot regardless of which implementation provider a profile selects.
 | Claude Code | `claude` | Add either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`. |
 | OpenAI Codex | `codex` | Add `OPENAI_API_KEY`. |
 
-See [Select Provider](https://JeffSteinbok.github.io/puppets/getting-started.html#9-select-provider)
+See [Select Provider](https://JeffSteinbok.github.io/puppets/getting-started.html#8-select-provider)
 for workflow secret mappings, permissions, model overrides, and testing instructions.
 
 ## Principles
@@ -43,9 +43,7 @@ for workflow secret mappings, permissions, model overrides, and testing instruct
 
 1. Copy [`caller-template.yml`](caller-template.yml) to
    `.github/workflows/puppets.yml` in a public repository.
-2. Replace `FRAMEWORK_REF` with a release tag such as `v1`, or use a full commit SHA for
-   strict pinning. Puppets derives the exact GitHub-resolved commit automatically.
-3. Add `.puppets/config.json`:
+2. Add `.puppets/config.json`:
 
    ```json
    {
@@ -54,10 +52,10 @@ for workflow secret mappings, permissions, model overrides, and testing instruct
    }
    ```
 
-4. Optionally add `.puppets/workflow.yml` to overlay the versioned `basic` workflow DSL.
-5. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
+3. Optionally add `.puppets/workflow.yml` to overlay the versioned `basic` workflow DSL.
+4. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
    perform Copilot assignment.
-6. Run the workflow manually with `dry_run: true`.
+5. Run the workflow manually with `dry_run: true`.
 
 See the [complete getting-started guide](https://JeffSteinbok.github.io/puppets/getting-started.html)
 for the documented caller workflow, permissions, credentials, dry-run rollout, upgrades,

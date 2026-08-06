@@ -69,9 +69,14 @@ built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/co
 declares named stages, handler kinds, outcome branches, labels, and profiles.
 
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
-and helper labels merge by identity, so callers do not copy the full workflow.
+and helper labels merge by identity, so callers do not copy the full workflow. Set
+`metadata.name` to give the resolved workflow a repository-specific name in logs and
+workflow summaries.
 
 ```yaml
+metadata:
+  name: incident-review
+
 spec:
   labels:
     controls:
@@ -101,6 +106,10 @@ spec:
         guidance: null
         heading: Incident review instructions
 ```
+
+`implementation.prompt` selects a Markdown prompt by name. Add a matching file such as
+`.puppets/prompts/incident-review.md` to replace the framework prompt from the trusted
+default branch. Prompt files are capped at 20 KB.
 
 The compiler rejects duplicate labels, dangling branches, unsupported DSL versions,
 unknown approval routes, missing security roles, and malformed profiles. Label names are
@@ -146,7 +155,7 @@ opens.
 Because a reusable workflow's `reconcile.js` step cannot itself invoke a `uses:` step, the
 reconciler emits a small job descriptor (issue number, branch, provider, and prompt/directive
 text — never raw issue or PR body content beyond what a human already sees) and a separate
-`implement` job in `reconcile.yml` runs the pinned provider action, then deterministically
+`implement` job in `reconcile.yml` runs the framework-selected provider action, then deterministically
 commits, pushes, and opens a **draft** pull request itself. Neither provider action is
 trusted to create the pull request on its own; the draft state keeps claude/codex-authored
 PRs subject to exactly the same CI and acceptance-review gates as a Copilot-authored one
@@ -174,9 +183,6 @@ calling workflow allows. See [Getting started](getting-started.md) for the full 
 dry-run test procedure.
 
 ## Explore the files
-
-The explorer shows the fully commented basic workflow and a minimal caller overlay. Select
-a file to inspect it, then use **Copy** to place its contents on the clipboard.
 
 <div class="file-explorer" data-file-explorer>
   <nav class="file-explorer-tree" aria-label="Puppets configuration files">
@@ -217,11 +223,6 @@ a file to inspect it, then use **Copy** to place its contents on the clipboard.
     <pre><code data-file-explorer-code>Loading workflow definition...</code></pre>
   </section>
 </div>
-
-## Prompt replacement
-
-A Markdown file under `.puppets/prompts/` replaces the framework prompt with the same
-name. Prompt files are capped at 20 KB and read only from the trusted default branch.
 
 ```text
 .puppets/prompts/

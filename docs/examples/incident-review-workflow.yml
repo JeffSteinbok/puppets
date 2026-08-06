@@ -1,4 +1,7 @@
 # This overlay adds a specialized profile without copying the basic workflow.
+metadata:
+  name: incident-review
+
 spec:
   profiles:
     - name: incident-review

@@ -9,20 +9,7 @@ Onboarding requires one lightweight workflow, one local configuration file, and 
 one repository-scoped token. The lifecycle implementation remains in the public Puppets
 framework.
 
-## 1. Choose a framework revision
-
-Use a release tag such as `v1` for simple upgrades, or a full 40-character commit SHA when
-you want strict, reviewable pinning. Avoid `main`, because it changes without an explicit
-caller update.
-
-```console
-gh api repos/JeffSteinbok/puppets/commits/main --jq .sha
-```
-
-The command above retrieves the current commit SHA if you choose strict pinning. Use the
-exact same tag or SHA in both marked locations in the workflow below.
-
-## 2. Add the caller workflow
+## 1. Add the caller workflow
 
 Create `.github/workflows/puppets.yml`:
 
@@ -54,7 +41,7 @@ concurrency:
 permissions:
   actions: write
   contents: read
-  # Allows Puppets to identify the exact commit behind its tag or SHA reference.
+  # Allows Puppets to identify the reusable workflow invocation.
   id-token: write
   issues: write
   pull-requests: write
@@ -62,8 +49,7 @@ permissions:
 
 jobs:
   reconcile:
-    # Use a release tag such as v1 for convenience, or a full commit SHA for strict pinning.
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@v1
     with:
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
@@ -73,14 +59,14 @@ jobs:
       token: ${{ secrets.PUPPETS_TOKEN }}
 ```
 
-Puppets reads GitHub's signed OIDC `job_workflow_sha` claim to check out the exact commit
-behind the single `uses` reference. This works for both release tags and commit SHAs.
+Puppets uses GitHub's signed reusable-workflow identity to load the framework runtime
+selected by the single `uses` reference.
 
 ### Why each permission exists
 
 | Permission | Used for |
 |---|---|
-| `contents: read` | Read trusted caller configuration and prompts from the default branch. Change to `write` only if a profile uses the `claude` or `codex` implementation provider — see step 9. |
+| `contents: read` | Read trusted caller configuration and prompts from the default branch. Change to `write` only if a profile uses the `claude` or `codex` implementation provider — see step 8. |
 | `id-token: write` | Read GitHub's signed reusable-workflow commit claim. |
 | `issues: write` | Reconcile labels, comments, assignments, and issue state. |
 | `pull-requests: write` | Track linked PRs, update branches, and maintain projected state. |
@@ -89,7 +75,7 @@ behind the single `uses` reference. This works for both release tags and commit 
 
 Do not add broader permissions unless a specific enabled feature requires them.
 
-## 3. Add repository policy
+## 2. Add repository policy
 
 Create `.puppets/config.json`:
 
@@ -111,7 +97,7 @@ maintain, triage, or admin permission in the repository.
 See the [configuration reference](configuration.html) for every setting, ignored labels,
 lifecycle overlays, and trusted prompt replacements.
 
-## 4. Decide whether a separate token is needed
+## 3. Decide whether a separate token is needed
 
 Try the first dry run without creating `PUPPETS_TOKEN`. The caller's `GITHUB_TOKEN` is
 preferred because it is short-lived and repository-scoped.
@@ -122,7 +108,7 @@ repository and only to the permissions the failed operation requires.
 
 Never reuse one broad token across all managed repositories.
 
-## 5. Run a dry run
+## 4. Run a dry run
 
 ```console
 gh workflow run puppets.yml --repo OWNER/REPOSITORY -f dry_run=true
@@ -140,7 +126,7 @@ Review:
 - existing downstream labels rejected for missing approval provenance; and
 - the workflow summary's attention list.
 
-## 6. Enable live reconciliation
+## 5. Enable live reconciliation
 
 Run the workflow manually with `dry_run: false`. Confirm labels were created and no
 unapproved issue invoked a model or coding agent. The checked-in schedule then becomes the
@@ -156,7 +142,7 @@ With the built-in `basic` profile, start work on an issue by:
 Apply the workflow's configured opt-out label whenever an issue or linked PR must be
 entirely excluded.
 
-## 7. Add specialized profiles
+## 6. Add specialized profiles
 
 Domain-specific routing belongs in `.puppets/workflow.yml`. For example, an incident-review
 profile can match a repository label, bypass curation through the declared `claim` branch,
@@ -181,18 +167,18 @@ spec:
 Repository-owned triggers still decide when to create and label the tracking issue. Puppets
 owns the approved assignment and lifecycle after that.
 
-## 8. Upgrade safely
+## 7. Upgrade safely
 
-1. Review the target Puppets commit and release notes.
+1. Review the target Puppets version and release notes.
 2. Change the single framework reference in the caller workflow.
 3. Open a pull request in the managed repository.
 4. Run `workflow_dispatch` with `dry_run: true` from the updated default branch after merge.
-5. Keep rollback simple: restore the previous known-good SHA.
+5. Keep rollback simple: restore the previous known-good version.
 
 Because configuration and durable state remain in the caller repository and GitHub labels,
 upgrading the shared runtime does not migrate an external database.
 
-## 9. Select Provider
+## 8. Select Provider
 
 Each profile selects its implementation agent with `implementation.provider` (see
 [Configuration → Implementation providers](configuration.html)). Curation and acceptance

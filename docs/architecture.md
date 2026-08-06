@@ -5,43 +5,58 @@ title: Architecture
 
 # Architecture
 
-Puppets reverses the usual central-controller model: each managed repository initiates its
-own run, grants its own permissions, and calls shared public code at an immutable revision.
+Puppets is a cloud-only harness: each managed repository initiates its own run, grants its
+own permissions, and calls shared public code using GitHub Actions compute. There is no
+inbound controller, external state store, or broad cross-repository token.
 
-<div class="architecture-flow" aria-label="Puppets execution architecture">
-  <section class="architecture-node caller-node">
-    <span class="architecture-eyebrow">Managed repository</span>
-    <strong>Caller owns authority</strong>
-    <ul>
-      <li>Triggers and concurrency</li>
-      <li>Explicit job permissions</li>
-      <li>Repository-scoped secrets</li>
-      <li>Local configuration and prompts</li>
-    </ul>
-  </section>
+<pre class="mermaid">
+flowchart LR
+    subgraph github["GitHub cloud"]
+        subgraph repo["Managed repository"]
+            trigger["Schedule or manual trigger"]
+            caller["Caller workflow"]
+            policy["Trusted .puppets config and prompts"]
+            secrets["Repository permissions and secrets"]
+            state["Issues, labels, comments, and pull requests"]
+            checks["Repository CI and checks"]
+        end
 
-  <div class="architecture-arrow">
-    <span>workflow_call</span>
-    <strong>Immutable SHA →</strong>
-  </div>
+        subgraph actions["GitHub Actions compute"]
+            reusable["Puppets reusable workflow"]
+            resolve["Resolve and validate policy"]
+            reconcile["Reconcile next lifecycle step"]
+            implement["Provider implementation job"]
+            review["Acceptance review"]
+        end
 
-  <section class="architecture-node framework-node">
-    <span class="architecture-eyebrow">Public framework</span>
-    <strong>Shared implementation</strong>
-    <ul>
-      <li>Reusable workflow</li>
-      <li>Reconciler runtime</li>
-      <li>Lifecycle and prompt defaults</li>
-      <li>Resolver, validation, and tests</li>
-    </ul>
-  </section>
-</div>
+        subgraph providers["Implementation providers"]
+            copilot["GitHub Copilot"]
+            claude["Claude Code"]
+            codex["OpenAI Codex"]
+        end
+    end
 
-<div class="architecture-rule">
-  <strong>No inbound controller.</strong>
-  The caller invokes Puppets; Puppets does not scan a repository list or reach into callers
-  with a broad cross-repository token.
-</div>
+    framework["Public Puppets framework"] -->|"selected ref"| reusable
+    trigger --> caller
+    secrets --> caller
+    caller -->|"workflow_call"| reusable
+    reusable --> resolve
+    policy --> resolve
+    resolve --> reconcile
+    state -->|"current lifecycle state"| reconcile
+    reconcile -->|"labels and comments"| state
+    reconcile -->|"assign"| copilot
+    reconcile -->|"implementation_jobs"| implement
+    implement --> claude
+    implement --> codex
+    copilot -->|"branch and draft PR"| state
+    claude -->|"workspace changes"| implement
+    codex -->|"workspace changes"| implement
+    implement -->|"branch and draft PR"| state
+    state --> checks
+    checks --> review
+    review -->|"pass, remediate, or escalate"| reconcile
+</pre>
 
 ## Responsibility split
 
@@ -53,15 +68,15 @@ own run, grants its own permissions, and calls shared public code at an immutabl
 | Lifecycle defaults | May safely overlay | Owns canonical model |
 | Prompts | May replace trusted files | Owns canonical prompts |
 | Runtime code | None copied locally | Versioned and tested centrally |
-| Upgrade | Changes one pinned SHA | Publishes compatible revisions |
+| Upgrade | Changes one framework version | Publishes compatible versions |
 
 ## What happens during a run
 
 <ol class="architecture-steps">
   <li>
     <strong>Resolve the framework revision.</strong>
-    Puppets reads GitHub's signed reusable-workflow claim to resolve the exact commit
-    behind the caller's tag or SHA.
+    Puppets reads GitHub's signed reusable-workflow claim to identify the selected framework
+    version.
   </li>
   <li>
     <strong>Check out trusted sources separately.</strong>
@@ -85,11 +100,10 @@ own run, grants its own permissions, and calls shared public code at an immutabl
   </li>
 </ol>
 
-## Pinning and packaging
+## Framework packaging
 
-The caller supplies one framework tag or commit SHA in its `uses` reference. GitHub's
-signed OIDC token includes `job_workflow_sha`, the exact commit selected for the reusable
-workflow. Puppets uses that claim to check out the matching framework runtime.
+The caller selects a published framework version in its `uses` reference. Puppets uses
+GitHub's signed reusable-workflow identity to load the matching framework runtime.
 
 The reusable workflow never assumes framework files exist in the caller checkout. It checks
 out the public framework into an isolated directory, installs the locked runtime, and loads
@@ -98,7 +112,7 @@ the reconciler from that revision.
 ```yaml
 jobs:
   reconcile:
-    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@FRAMEWORK_REF
+    uses: JeffSteinbok/puppets/.github/workflows/reconcile.yml@v1
     with:
       dry_run: ${{ inputs.dry_run || false }}
 ```
@@ -132,7 +146,7 @@ run as GitHub Actions steps, which the `reconcile` job cannot invoke itself (onl
 `uses:` step in workflow YAML can run another Action). So `reconcile.js` instead emits an
 `implementation_jobs` output — a small, non-secret job descriptor per queued issue/PR — and
 a second job, `implement`, consumes it as a dynamic matrix: it checks out the deterministic
-`puppets/issue-<n>` branch, runs the pinned provider action, and then hands off to
+`puppets/issue-<n>` branch, runs the selected provider action, and then hands off to
 `scripts/finalize-implementation.js`, the single place that commits, pushes, and opens a
 draft pull request for either provider. The `implement` job is skipped entirely — no
 checkout, no cost — whenever every matching profile still uses `copilot`.

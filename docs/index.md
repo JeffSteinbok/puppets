@@ -25,9 +25,12 @@ repository runs a small caller workflow on GitHub-hosted runners, while issues, 
 workflow runs, and pull requests hold the complete lifecycle state. The repository owns its
 triggers, permissions, credentials, provider selection, and local policy.
 
-GitHub documents standard GitHub-hosted runner usage as
-[free for public repositories](https://docs.github.com/en/billing/reference/actions-runner-pricing).
-Larger runners and external model-provider usage may still incur their own charges.
+<aside class="puppets-note">
+  <strong>Public repository compute is generally free.</strong>
+  GitHub documents standard GitHub-hosted runner usage as
+  <a href="https://docs.github.com/en/billing/reference/actions-runner-pricing">free for public repositories</a>.
+  Larger runners and external model-provider usage may still incur their own charges.
+</aside>
 
 ## From issue to reviewed pull request
 
@@ -54,6 +57,14 @@ step.
 
 ## The default `basic` workflow labels
 
+<aside class="puppets-note">
+  <strong>This workflow is a starting point, not a fixed process.</strong>
+  Repositories can override label names, colors, descriptions, stages, routes, profiles,
+  prompts, and provider selection in <code>.puppets/workflow.yml</code>. Puppets preserves
+  the configured workflow while continuing to enforce its non-overridable security
+  boundaries.
+</aside>
+
 | State | Meaning |
 |---|---|
 | `puppets:needs-info` | The issue needs enough concrete detail to enter the approval queue. |
@@ -77,16 +88,16 @@ label strings.
 
 Each managed repository checks in:
 
-```text
+<pre class="no-copy"><code>
 .github/workflows/puppets.yml
 .puppets/
   config.json
   workflow.yml        # optional versioned DSL overlay
-  prompts/             # optional replacements
-```
+  prompts/            # optional replacements
+</code></pre>
 
 The caller workflow owns triggers, concurrency, explicit permissions, and local secrets. It
-calls this public framework at an explicit release tag or commit SHA. The framework owns
+calls a published version of this public framework. The framework owns
 the reusable workflow, runtime, default lifecycle, prompts, configuration validation, and
 regression tests.
 
@@ -107,51 +118,11 @@ troupe of repositories.
 Copilot and model requests remain separately metered. Moving execution to public callers
 does not make those requests free.
 
-## Data-driven, but not security-configurable
-
-The default `workflow.yml` declares named stages, handler types, outcome branches, labels,
-profiles, in-flight accounting, pull-request projection, and terminal behavior. A caller
-may overlay that machine or add prompts from its trusted default branch.
-
-Configuration cannot weaken these runtime invariants:
-
-- no privileged work before verified approval provenance;
-- permission lookup failures fail closed;
-- the configured opt-out label suppresses all processing;
-- fork or pull-request-head code never executes with write credentials;
-- issue, PR, diff, and check text is untrusted data, never instruction;
-- unknown transitions and invalid configuration are rejected before mutation; and
-- uncertain output or retry exhaustion escalates to a human.
-
 ## Specialized profiles
 
 Repository policy can add profiles for work such as incident reviews, release notes, or
 dependency updates without adding new runtime behavior. A profile selects labels, routing,
 and a trusted prompt while retaining the ordinary Puppets trust and review gates.
-
-The `obsidian-onedrive` pilot happens to use this mechanism for postmortem hardening; the
-runtime has no postmortem-specific code.
-
-## Install in a repository
-
-1. Copy the
-   [caller template](https://github.com/JeffSteinbok/puppets/blob/main/caller-template.yml)
-   to `.github/workflows/puppets.yml`.
-2. Replace `FRAMEWORK_REF` with a release tag such as `v1`, or a full commit SHA for
-   strict pinning.
-3. Add `.puppets/config.json`:
-
-   ```json
-   {
-     "version": 1,
-     "approvalActors": ["YOUR_GITHUB_LOGIN"]
-   }
-   ```
-
-4. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
-   perform Copilot assignment.
-5. Run **Puppets** manually with `dry_run: true`.
-6. Review the workflow summary, then enable the staggered schedule.
 
 ## Go deeper
 

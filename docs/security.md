@@ -16,8 +16,7 @@ title: Security
 - Configuration and prompts are loaded from the caller's default branch.
 - Fork or pull-request-head code is never checked out with write credentials.
 - Local lifecycle data cannot remove protected states or bypass approval checks.
-- Callers use an explicit release tag or commit SHA; full SHAs provide the strongest
-  supply-chain pinning.
+- Callers select an explicit published framework version.
 - The framework never requires a token that can mutate other managed repositories.
 
 ## Implementation providers
@@ -28,12 +27,10 @@ implementation step; it does not change any of the trust boundaries above.
 - **Closed allowlist, not arbitrary Actions.** The provider name is validated against a
   fixed set defined in `src/providers/providers.js` (`copilot`, `claude`, `codex`). A caller's
   `.puppets/workflow.yml` overlay can select among these three built-in behaviors but can
-  never name or pin an arbitrary `uses:` reference — that would require a framework code
+  never name an arbitrary `uses:` reference — that would require a framework code
   change and review, not a caller-side configuration edit.
-- **Official actions, pinned to a commit SHA.** `anthropics/claude-code-action` and
-  `openai/codex-action` are referenced in `reconcile.yml` by immutable 40-character commit
-  SHA (annotated with the release tag they correspond to), the same supply-chain pinning
-  discipline used for the framework reference itself.
+- **Framework-controlled official actions.** Provider action versions are selected and
+  reviewed in `reconcile.yml`; caller configuration cannot replace them.
 - **Credentials are scoped to the provider that needs them and never touch issue/PR
   content.** `anthropic_api_key`/`claude_code_oauth_token`/`openai_api_key` are ordinary
   optional `workflow_call` secrets, wired only into the `implement` job and only into the
