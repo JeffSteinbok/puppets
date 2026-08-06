@@ -73,7 +73,11 @@ spec:
 
 function buildNextSteps(provider) {
   const secretStep = {
-    copilot: 'No provider secret is normally required.',
+    copilot: [
+      'Set a user token for Copilot assignment:',
+      '     gh secret set PUPPETS_TOKEN',
+      '     GitHub Actions installation tokens cannot assign coding agents.',
+    ].join('\n'),
     claude: [
       'Set one Claude credential:',
       '     gh secret set CLAUDE_CODE_OAUTH_TOKEN',

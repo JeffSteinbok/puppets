@@ -37,7 +37,8 @@ jobs:
       dry_run: ${{ inputs.dry_run || false }}
       caller_workflow: puppets.yml
     secrets:
-      # Optional: add only if GITHUB_TOKEN cannot assign the Copilot coding agent.
+      # Required when a profile uses Copilot. GitHub App installation tokens, including
+      # GITHUB_TOKEN, cannot assign coding agents; use a repository-scoped user token.
       token: ${{ secrets.PUPPETS_TOKEN }}
       # Optional: only required if a workflow profile sets implementation.provider to
       # `claude` or `codex`. Uncomment the secrets for whichever provider(s) you use, and

@@ -44,7 +44,8 @@ test('setup prints provider-specific credentials and rollout commands', () => {
   assert.match(claude, /gh workflow run puppets\.yml -f dry_run=true/);
 
   const copilot = buildNextSteps('copilot');
-  assert.match(copilot, /No provider secret is normally required/);
+  assert.match(copilot, /gh secret set PUPPETS_TOKEN/);
+  assert.match(copilot, /installation tokens cannot assign coding agents/);
   assert.doesNotMatch(copilot, /ANTHROPIC|OPENAI/);
 });
 
