@@ -70,3 +70,6 @@ npm run check
 
 The runtime uses the locked GitHub Copilot SDK dependency. Tests use Node's built-in test
 runner.
+
+Provider implementations, including this one, run through the same CI and review gates before
+merging.
