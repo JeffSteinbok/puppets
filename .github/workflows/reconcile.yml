@@ -291,6 +291,7 @@ jobs:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ secrets.token || github.token }}
+          claude_args: --permission-mode acceptEdits
           # The action has no dedicated model input; a model override is passed the same
           # way the Claude Code CLI itself supports, via the "model" key of its settings.json.
           settings: ${{ matrix.model != '' && format('{{"model":{0}}}', toJSON(matrix.model)) || '' }}
