@@ -9,6 +9,20 @@ Puppets is repository-owned, data-driven GitHub issue-to-PR automation. Each man
 repository checks in a small caller workflow that invokes this public framework at an
 explicit release tag or commit SHA.
 
+## Supported providers
+
+Puppets supports three implementation providers. Curation and acceptance review continue
+to use Copilot regardless of which implementation provider a profile selects.
+
+| Provider | `implementation.provider` | Repository settings |
+|---|---|---|
+| GitHub Copilot | `copilot` | No secret is normally required. Optionally add `PUPPETS_TOKEN` if `GITHUB_TOKEN` cannot assign Copilot. |
+| Claude Code | `claude` | Add either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`. |
+| OpenAI Codex | `codex` | Add `OPENAI_API_KEY`. |
+
+See [Select Provider](https://JeffSteinbok.github.io/puppets/getting-started.html#9-select-provider)
+for workflow secret mappings, permissions, model overrides, and testing instructions.
+
 ## Principles
 
 - The caller repository owns triggers, permissions, credentials, and local policy.

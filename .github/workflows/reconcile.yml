@@ -222,6 +222,19 @@ jobs:
             }
             core.setOutput('ref', payload.job_workflow_sha);
 
+      # Checked out at the workspace root (rather than a subdirectory, unlike the `reconcile`
+      # job) because anthropics/claude-code-action has no working-directory input and always
+      # operates on $GITHUB_WORKSPACE.
+      - name: Check out caller default branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.token || github.token }}
+
+      # Check out the framework after the root checkout. A later checkout at the workspace
+      # root may remove an earlier nested checkout even with `clean: false`, leaving the
+      # prompt builder and finalizer unable to load their framework modules.
       - name: Check out Puppets framework
         uses: actions/checkout@v4
         with:
@@ -229,18 +242,6 @@ jobs:
           ref: ${{ steps.framework.outputs.ref }}
           path: .puppets-framework
           persist-credentials: false
-
-      # Checked out at the workspace root (rather than a subdirectory, unlike the `reconcile`
-      # job) because anthropics/claude-code-action has no working-directory input and always
-      # operates on $GITHUB_WORKSPACE. `clean: false` is required so this checkout does not
-      # delete the framework checkout that already lives at .puppets-framework.
-      - name: Check out caller default branch
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.repository.default_branch }}
-          token: ${{ secrets.token || github.token }}
-          clean: false
 
       - name: Prepare implementation branch
         id: branch
