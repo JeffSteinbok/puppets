@@ -19,6 +19,10 @@ concurrency:
 permissions:
   # The reusable workflow cannot elevate beyond these caller-granted permissions.
   actions: write
+  # Read is enough while every profile uses the default `copilot` provider. Change to
+  # `write` only if a workflow profile sets `implementation.provider: claude` or `codex` —
+  # the `implement` job needs it to push branches and open pull requests for those
+  # providers, and a reusable workflow can never be granted more than the caller allows here.
   contents: read
   # Lets the reusable workflow identify its exact GitHub-resolved commit.
   id-token: write
@@ -36,3 +40,10 @@ jobs:
     secrets:
       # Optional: add only if GITHUB_TOKEN cannot assign the Copilot coding agent.
       token: ${{ secrets.PUPPETS_TOKEN }}
+      # Optional: only required if a workflow profile sets implementation.provider to
+      # `claude` or `codex`. Uncomment the secrets for whichever provider(s) you use, and
+      # remember to also set `permissions.contents: write` above. See docs/configuration.md
+      # and docs/getting-started.md for setup and dry-run testing steps.
+      # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # openai_api_key: ${{ secrets.OPENAI_API_KEY }}

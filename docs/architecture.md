@@ -121,6 +121,27 @@ This makes reconciliation repeatable: every run derives state from labels and ma
 comments rather than trusting an external database or a previous runner process. Overlapping
 runs are serialized by the caller's repository-scoped concurrency group.
 
+## Implementation providers
+
+A profile's `implementation.provider` (`copilot` by default, or `claude`/`codex`) selects
+who performs the implementation step; every other stage of the lifecycle above is unchanged
+and provider-agnostic, because it only ever inspects the resulting pull request.
+
+`copilot` is assigned directly, exactly as before providers existed. `claude` and `codex`
+run as GitHub Actions steps, which the `reconcile` job cannot invoke itself (only a
+`uses:` step in workflow YAML can run another Action). So `reconcile.js` instead emits an
+`implementation_jobs` output — a small, non-secret job descriptor per queued issue/PR — and
+a second job, `implement`, consumes it as a dynamic matrix: it checks out the deterministic
+`puppets/issue-<n>` branch, runs the pinned provider action, and then hands off to
+`scripts/finalize-implementation.js`, the single place that commits, pushes, and opens a
+draft pull request for either provider. The `implement` job is skipped entirely — no
+checkout, no cost — whenever every matching profile still uses `copilot`.
+
+Curation and the acceptance-review gate always run through the Copilot SDK regardless of
+`implementation.provider`; only the implementation step is provider-selectable today. See
+[Configuration → Implementation providers](configuration.html) for setup and
+[Security → Implementation providers](security.html) for the trust model.
+
 ## State machine
 
 The basic workflow compiles to this graph. Branch names are declared outcomes, not model

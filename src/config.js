@@ -16,6 +16,11 @@ const DEFAULT_CONFIG = {
   conflictRetries: 2,
   reviewRetries: 2,
   copilotModel: 'auto',
+  // Optional model overrides for the Claude/Codex implementation providers. Empty means
+  // "use that provider action's own default" — unlike copilotModel, these may be blank
+  // because curation/acceptance review never depend on them (they remain Copilot-only).
+  claudeModel: '',
+  codexModel: '',
   staleHours: 72,
   ignoreLabels: [],
 };
@@ -64,6 +69,11 @@ function validateConfig(config) {
   }
   if (typeof config.copilotModel !== 'string' || !config.copilotModel.trim()) {
     throw new Error('copilotModel must be a non-empty string');
+  }
+  for (const key of ['claudeModel', 'codexModel']) {
+    if (typeof config[key] !== 'string') {
+      throw new Error(`${key} must be a string`);
+    }
   }
   if (!Array.isArray(config.ignoreLabels) ||
       config.ignoreLabels.some(label => typeof label !== 'string' || !label.trim())) {

@@ -33,6 +33,8 @@ before Puppets mutates an issue or pull request.
 | `conflictRetries` | `2` | Merge-conflict remediation attempts before human escalation. |
 | `reviewRetries` | `2` | Acceptance-review remediation cycles before escalation. |
 | `copilotModel` | `"auto"` | Copilot SDK model used by curation and acceptance review. |
+| `claudeModel` | `""` | Optional model override for the `claude` implementation provider. Empty uses that action's own default. |
+| `codexModel` | `""` | Optional model override for the `codex` implementation provider. Empty uses that action's own default. |
 | `staleHours` | `72` | Age at which untouched issues return to the attention summary. |
 | `ignoreLabels` | `[]` | Repository-owned processes Puppets must leave alone. |
 
@@ -111,6 +113,65 @@ The default `basic` profile routes approved work through curation and then imple
 Profiles select issues by labels and can choose an approval branch, implementation prompt,
 trusted guidance file, and heading. Higher-priority matching profiles win; exactly one
 profile must be the default.
+
+### Implementation providers
+
+`profile.implementation.provider` selects which agent performs the implementation step for
+issues matching that profile. It defaults to `copilot` and is validated against a fixed,
+code-defined allowlist — `copilot`, `claude`, or `codex` — so a caller overlay can never name
+an arbitrary GitHub Action, only one of these three built-in behaviors:
+
+```yaml
+spec:
+  profiles:
+    - name: incident-review
+      default: false
+      priority: 100
+      selector:
+        allLabels: [incident-review]
+      routes:
+        approved: claim
+      implementation:
+        prompt: incident-review
+        guidance: null
+        heading: Incident review instructions
+        provider: claude
+```
+
+**`copilot`** (the default) assigns the GitHub Copilot coding agent to the issue directly, as
+Puppets has always done; it works out of band and Puppets later finds the pull request it
+opens.
+
+**`claude`** and **`codex`** run as GitHub Actions steps instead of an assignable bot.
+Because a reusable workflow's `reconcile.js` step cannot itself invoke a `uses:` step, the
+reconciler emits a small job descriptor (issue number, branch, provider, and prompt/directive
+text — never raw issue or PR body content beyond what a human already sees) and a separate
+`implement` job in `reconcile.yml` runs the pinned provider action, then deterministically
+commits, pushes, and opens a **draft** pull request itself. Neither provider action is
+trusted to create the pull request on its own; the draft state keeps claude/codex-authored
+PRs subject to exactly the same CI and acceptance-review gates as a Copilot-authored one
+before a maintainer sees them out of draft.
+
+This job is entirely skipped — no checkout, no secrets used — for any caller where every
+matching profile still uses `copilot`, so adopting providers is opt-in per profile and
+existing callers are unaffected.
+
+**Curation and acceptance review remain Copilot-only.** Selecting `claude` or `codex` only
+changes who implements an approved issue; issue triage/curation and the acceptance-review
+gate before merge still call the Copilot SDK (`copilotModel`) regardless of
+`implementation.provider`. Puppets does not claim Copilot-free operation for a profile that
+uses another implementation provider.
+
+#### Secrets and permissions
+
+`claude` needs `secrets.anthropic_api_key` or `secrets.claude_code_oauth_token` (the latter
+from `claude setup-token`, for Claude Pro/Max plan users, as an alternative to a metered API
+key); `codex` needs `secrets.openai_api_key`. Wire only the secret(s) your chosen provider(s)
+need through the caller workflow's `secrets:` block (see `caller-template.yml`), and set the
+caller's top-level `permissions.contents` to `write` — the `implement` job needs it to push
+branches and open pull requests, and a reusable workflow can never be granted more than the
+calling workflow allows. See [Getting started](getting-started.md) for the full setup and a
+dry-run test procedure.
 
 ## Explore the files
 

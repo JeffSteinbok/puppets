@@ -6,7 +6,7 @@ const {
   evaluateApproval,
   findLatestApprovalEvent,
   normalizePermissionLevels,
-} = require('../lib/approval');
+} = require('../src/approval');
 
 const actors = new Set(['jeffsteinbok']);
 
