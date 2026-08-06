@@ -47,9 +47,9 @@ module.exports = async ({ github, context, core }) => {
     evaluateApproval,
     findLatestApprovalEvent,
     normalizePermissionLevels,
-  } = require('../lib/approval');
-  const { createStateController } = require('../lib/state');
-  const { createMachineModel } = require('../lib/workflow');
+  } = require('./approval');
+  const { createStateController } = require('./state');
+  const { createMachineModel } = require('./workflow');
   // ── Configuration (all inputs arrive as environment variables) ──
   const owner = process.env.PUPPETS_OWNER?.trim() || context.repo.owner;
   const dryRun = process.env.DRY_RUN === 'true';

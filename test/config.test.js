@@ -8,14 +8,14 @@ const assert = require('node:assert/strict');
 const {
   mergeObjects,
   resolveConfiguration,
-} = require('../lib/config');
+} = require('../src/config');
 const {
   compileWorkflow,
   createMachineModel,
   mergeWorkflow,
   parseWorkflow,
   resolveProfile,
-} = require('../lib/workflow');
+} = require('../src/workflow');
 
 const workflowSource = fs.readFileSync(
   path.join(__dirname, '..', 'config', 'workflow.yml'),

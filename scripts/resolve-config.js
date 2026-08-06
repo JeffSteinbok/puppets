@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveConfiguration } = require('../lib/config');
+const { resolveConfiguration } = require('../src/config');
 
 const frameworkRoot = path.resolve(process.env.PUPPETS_FRAMEWORK_ROOT || '.');
 const callerRoot = path.resolve(process.env.PUPPETS_CALLER_ROOT || '.puppets-caller');
