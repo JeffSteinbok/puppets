@@ -105,19 +105,6 @@ Deterministic filtering, human approval, admission limits, and sticky verdict co
 avoid unnecessary model calls. Copilot and external provider requests remain separately
 metered.
 
-## Go deeper
+## Ready to start?
 
-<div class="puppets-grid">
-  <a class="puppets-card puppets-link-card" href="getting-started.html">
-    <strong>Getting started</strong>
-    <span>Complete caller workflow, permissions, credentials, dry run, and upgrade process.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="architecture.html">
-    <strong>Architecture</strong>
-    <span>Caller context, reusable workflow packaging, credentials, and state ownership.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="configuration.html">
-    <strong>Configuration</strong>
-    <span>Limits, ignored labels, lifecycle overlays, and trusted prompt replacement.</span>
-  </a>
-</div>
+<a class="puppets-button" href="getting-started.html">Get started with Puppets</a>

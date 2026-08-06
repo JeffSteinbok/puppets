@@ -71,6 +71,31 @@ spec:
 `;
 }
 
+function buildNextSteps(provider) {
+  const secretStep = {
+    copilot: 'No provider secret is normally required.',
+    claude: [
+      'Set one Claude credential:',
+      '     gh secret set CLAUDE_CODE_OAUTH_TOKEN',
+      '     # or: gh secret set ANTHROPIC_API_KEY',
+    ].join('\n'),
+    codex: [
+      'Set the Codex credential:',
+      '     gh secret set OPENAI_API_KEY',
+    ].join('\n'),
+  }[provider];
+
+  return `Next steps:
+  1. ${secretStep}
+  2. Review and commit the generated files:
+     git add .github/workflows/puppets.yml .puppets
+     git commit -m "Configure Puppets"
+     git push
+  3. Run the first reconciliation without making changes:
+     gh workflow run puppets.yml -f dry_run=true
+     gh run watch`;
+}
+
 function writeSetup({ approver, force, provider, target }) {
   const login = approver || detectGitHubLogin();
   if (!login) {
@@ -137,7 +162,7 @@ function main() {
     for (const filePath of result.files) {
       console.log(`  ${path.relative(path.resolve(options.target), filePath)}`);
     }
-    console.log('\nReview and commit these files, then run the Puppets workflow with dry_run=true.');
+    console.log(`\n${buildNextSteps(result.provider)}`);
   } catch (error) {
     console.error(`Puppets setup failed: ${error.message}`);
     process.exitCode = 1;
@@ -148,6 +173,7 @@ if (require.main === module) main();
 
 module.exports = {
   buildCallerWorkflow,
+  buildNextSteps,
   buildProviderOverlay,
   parseArgs,
   writeSetup,

@@ -8,20 +8,6 @@ title: Configuration
 Puppets ships safe defaults. Each caller keeps its policy beside its code, and Puppets loads
 that policy only from the repository's trusted default branch.
 
-## Minimum configuration
-
-Create `.puppets/config.json`:
-
-```json
-{
-  "version": 1,
-  "approvalActors": ["YOUR_GITHUB_LOGIN"]
-}
-```
-
-That is enough to start with the framework defaults. Unknown keys and invalid values fail
-before Puppets mutates an issue or pull request.
-
 ## Available settings
 
 | Setting | Default | Purpose |

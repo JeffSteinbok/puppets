@@ -7,6 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildCallerWorkflow,
+  buildNextSteps,
   parseArgs,
   writeSetup,
 } = require('../scripts/setup');
@@ -34,6 +35,17 @@ test('Claude setup grants write access and maps both authentication options', ()
   assert.match(workflow, /^      anthropic_api_key:/m);
   assert.match(workflow, /^      claude_code_oauth_token:/m);
   assert.doesNotMatch(workflow, /^      openai_api_key:/m);
+});
+
+test('setup prints provider-specific credentials and rollout commands', () => {
+  const claude = buildNextSteps('claude');
+  assert.match(claude, /gh secret set CLAUDE_CODE_OAUTH_TOKEN/);
+  assert.match(claude, /gh secret set ANTHROPIC_API_KEY/);
+  assert.match(claude, /gh workflow run puppets\.yml -f dry_run=true/);
+
+  const copilot = buildNextSteps('copilot');
+  assert.match(copilot, /No provider secret is normally required/);
+  assert.doesNotMatch(copilot, /ANTHROPIC|OPENAI/);
 });
 
 test('setup writes minimal repository configuration and refuses overwrites', () => {
