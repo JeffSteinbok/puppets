@@ -7,8 +7,8 @@ title: Puppets
   <div>
     <h1>Puppets</h1>
     <p>
-      Repository-owned, data-driven automation that turns approved GitHub issues into
-      reviewed pull requests without a central controller reaching into your repositories.
+      A pure cloud-based automation harness that turns approved GitHub issues into reviewed
+      pull requests using GitHub Actions compute and repository-owned policy.
     </p>
     <div class="puppets-actions">
       <a class="puppets-button" href="getting-started.html">Install Puppets</a>
@@ -18,24 +18,16 @@ title: Puppets
   <img class="puppets-logo" src="{{ '/assets/puppetslogo.png' | relative_url }}" alt="Puppets logo">
 </section>
 
-<div class="puppets-grid">
-  <div class="puppets-card">
-    <strong>Caller owned</strong>
-    <span>Each repository owns its triggers, permissions, secrets, and local policy.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Shared and pinned</strong>
-    <span>Reusable runtime and defaults come from an immutable public framework commit.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Cheap for public repos</strong>
-    <span>Standard hosted-runner usage is attributed to the public caller repository.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Fail closed</strong>
-    <span>Approval provenance and repository trust boundaries cannot be overridden.</span>
-  </div>
-</div>
+## Pure cloud automation on GitHub
+
+Puppets has no controller service, server, database, or inbound webhook to deploy. Each
+repository runs a small caller workflow on GitHub-hosted runners, while issues, labels,
+workflow runs, and pull requests hold the complete lifecycle state. The repository owns its
+triggers, permissions, credentials, provider selection, and local policy.
+
+GitHub documents standard GitHub-hosted runner usage as
+[free for public repositories](https://docs.github.com/en/billing/reference/actions-runner-pricing).
+Larger runners and external model-provider usage may still incur their own charges.
 
 ## From issue to reviewed pull request
 
@@ -49,8 +41,9 @@ step.
    Puppets verifies who applied the label and checks their current repository permission.
 3. **Curation screens the work.** A read-only agent checks for abuse, duplicates,
    feasibility, and useful classification without changing code.
-4. **Copilot implements it.** A ready issue is admitted under repository limits, assigned
-   to the coding agent, and linked to the resulting pull request.
+4. **The selected provider implements it.** A ready issue is admitted under repository
+   limits, implemented by Copilot, Claude Code, or Codex, and linked to the resulting pull
+   request.
 5. **Evidence is verified.** Normal CI must pass, then an acceptance-review gate judges the
    diff against the issue and available check evidence.
 6. **Failures loop or escalate.** Actionable findings return to Copilot for bounded
@@ -102,7 +95,7 @@ troupe of repositories.
 
 ## Why it is inexpensive
 
-- Public repositories receive free standard GitHub-hosted runner minutes.
+- [Standard GitHub-hosted runners are free for public repositories](https://docs.github.com/en/billing/reference/actions-runner-pricing).
 - Actions usage is attributed to the public caller repository, not a private controller.
 - Deterministic filtering happens before model calls.
 - No model runs before a maintainer approves the issue.
@@ -184,6 +177,3 @@ runtime has no postmortem-specific code.
     <span>Customize routing and prompts without creating special-case runtime behavior.</span>
   </a>
 </div>
-
-The first live caller is
-[`JeffSteinbok/obsidian-onedrive`](https://github.com/JeffSteinbok/obsidian-onedrive).

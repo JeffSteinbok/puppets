@@ -5,9 +5,14 @@
 [![Website](https://img.shields.io/badge/website-puppets-2ea44f?logo=githubpages)](https://JeffSteinbok.github.io/puppets/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Puppets is repository-owned, data-driven GitHub issue-to-PR automation. Each managed
-repository checks in a small caller workflow that invokes this public framework at an
-explicit release tag or commit SHA.
+Puppets is a pure cloud-based GitHub issue-to-PR automation harness. Each repository runs a
+small caller workflow using GitHub Actions compute and keeps its policy, credentials, state,
+issues, and pull requests in GitHub. There is no controller service, server, database, or
+inbound webhook to deploy.
+
+Standard GitHub-hosted runners are generally
+[free for public repositories](https://docs.github.com/en/billing/reference/actions-runner-pricing).
+Larger runners and model-provider usage may have separate costs.
 
 ## Supported providers
 
@@ -28,8 +33,8 @@ for workflow secret mappings, permissions, model overrides, and testing instruct
 - The caller repository owns triggers, permissions, credentials, and local policy.
 - This repository owns reusable orchestration, runtime code, defaults, schemas, tests, and
   documentation.
-- Standard GitHub-hosted runner usage is billed to the caller repository and is free for
-  public repositories.
+- Standard GitHub-hosted runner usage runs in the caller repository and is free for public
+  repositories.
 - No central controller, inbound webhook, or cross-repository mutation token is required.
 - Approval provenance, the configured opt-out role, trusted-branch loading, and fork
   isolation fail closed and cannot be disabled by configuration.
