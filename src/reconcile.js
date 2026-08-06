@@ -33,7 +33,7 @@
  * and then deterministically commit, push, and open or update the linked pull request.
  * Curation and acceptance review always call the Copilot SDK directly (`callCopilot`)
  * regardless of a profile's implementation provider — reasoning/judgment steps remain
- * Copilot-only; only the implementation step is provider-neutral. See docs/security.md.
+ * Copilot-only; only the implementation step is provider-neutral.
  *
  * Configuration is passed entirely through environment variables (wired up by the
  * calling workflow):

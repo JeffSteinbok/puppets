@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "Repository-owned, data-driven GitHub issue-to-PR automation.",
+  "bin": {
+    "puppets-setup": "scripts/setup.js"
+  },
   "scripts": {
-    "check": "node --check src/reconcile.js && node --check src/config.js && node --check src/workflow.js && node --check src/state.js && node --check src/approval.js && node --check src/env-list.js && node --check src/providers/providers.js && node --check src/providers/markers.js && node --check src/providers/implementation-job.js && node --check scripts/resolve-config.js && node --check scripts/finalize-implementation.js && node --test",
+    "check": "node --check src/reconcile.js && node --check src/config.js && node --check src/workflow.js && node --check src/state.js && node --check src/approval.js && node --check src/env-list.js && node --check src/providers/providers.js && node --check src/providers/markers.js && node --check src/providers/implementation-job.js && node --check scripts/resolve-config.js && node --check scripts/finalize-implementation.js && node --check scripts/setup.js && node --test",
     "test": "node --test"
   },
   "repository": {

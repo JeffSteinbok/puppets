@@ -138,23 +138,13 @@ runs are serialized by the caller's repository-scoped concurrency group.
 ## Implementation providers
 
 A profile's `implementation.provider` (`copilot` by default, or `claude`/`codex`) selects
-who performs the implementation step; every other stage of the lifecycle above is unchanged
-and provider-agnostic, because it only ever inspects the resulting pull request.
+who performs the implementation step. Copilot is assigned directly; Claude and Codex run in
+the provider job shown above and hand their workspace changes back to Puppets, which opens a
+draft pull request. The rest of the lifecycle remains provider-agnostic and inspects the
+resulting pull request.
 
-`copilot` is assigned directly, exactly as before providers existed. `claude` and `codex`
-run as GitHub Actions steps, which the `reconcile` job cannot invoke itself (only a
-`uses:` step in workflow YAML can run another Action). So `reconcile.js` instead emits an
-`implementation_jobs` output — a small, non-secret job descriptor per queued issue/PR — and
-a second job, `implement`, consumes it as a dynamic matrix: it checks out the deterministic
-`puppets/issue-<n>` branch, runs the selected provider action, and then hands off to
-`scripts/finalize-implementation.js`, the single place that commits, pushes, and opens a
-draft pull request for either provider. The `implement` job is skipped entirely — no
-checkout, no cost — whenever every matching profile still uses `copilot`.
-
-Curation and the acceptance-review gate always run through the Copilot SDK regardless of
-`implementation.provider`; only the implementation step is provider-selectable today. See
-[Configuration → Implementation providers](configuration.html) for setup and
-[Security → Implementation providers](security.html) for the trust model.
+See [Configuration → Implementation providers](configuration.html#implementation-providers)
+for setup.
 
 ## State machine
 
@@ -210,5 +200,6 @@ the compiled machine selects its target.
 
 The runtime, not editable workflow data, enforces approval provenance, current actor
 permission, the configured opt-out role, trusted-default-branch configuration, fork
-isolation, and transition validation. See the [security model](security.html) for the
-complete set of protected invariants.
+isolation, and transition validation. Issue, pull-request, diff, and check text remains
+untrusted data, and provider selection cannot replace framework-controlled actions or
+weaken these invariants.

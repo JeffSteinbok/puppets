@@ -38,24 +38,6 @@ before Puppets mutates an issue or pull request.
 | `staleHours` | `72` | Age at which untouched issues return to the attention summary. |
 | `ignoreLabels` | `[]` | Repository-owned processes Puppets must leave alone. |
 
-## A practical caller policy
-
-```json
-{
-  "version": 1,
-  "approvalActors": [
-    "JeffSteinbok",
-    "trusted-maintainer"
-  ],
-  "maxNewIssues": 1,
-  "maxInFlight": 2,
-  "reviewRetries": 2,
-  "ignoreLabels": [
-    "manual-only"
-  ]
-}
-```
-
 ### Ignored processes
 
 `ignoreLabels` supports repository-owned processes that should coexist with Puppets without
@@ -71,41 +53,7 @@ declares named stages, handler kinds, outcome branches, labels, and profiles.
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
 and helper labels merge by identity, so callers do not copy the full workflow. Set
 `metadata.name` to give the resolved workflow a repository-specific name in logs and
-workflow summaries.
-
-```yaml
-metadata:
-  name: incident-review
-
-spec:
-  labels:
-    controls:
-      - role: opt-out
-        name: automation:skip
-        color: "111111"
-        description: Exclude this item from automation.
-
-  stages:
-    - name: approved
-      label:
-        name: automation:approved
-    - name: ready
-      label:
-        color: "7C3AED"
-
-  profiles:
-    - name: incident-review
-      default: false
-      priority: 100
-      selector:
-        allLabels: [incident-review]
-      routes:
-        approved: claim
-      implementation:
-        prompt: incident-review
-        guidance: null
-        heading: Incident review instructions
-```
+workflow summaries. The file explorer below includes a complete incident-review overlay.
 
 `implementation.prompt` selects a Markdown prompt by name. Add a matching file such as
 `.puppets/prompts/incident-review.md` to replace the framework prompt from the trusted
@@ -131,20 +79,8 @@ code-defined allowlist — `copilot`, `claude`, or `codex` — so a caller overl
 an arbitrary GitHub Action, only one of these three built-in behaviors:
 
 ```yaml
-spec:
-  profiles:
-    - name: incident-review
-      default: false
-      priority: 100
-      selector:
-        allLabels: [incident-review]
-      routes:
-        approved: claim
-      implementation:
-        prompt: incident-review
-        guidance: null
-        heading: Incident review instructions
-        provider: claude
+implementation:
+  provider: claude
 ```
 
 **`copilot`** (the default) assigns the GitHub Copilot coding agent to the issue directly, as
@@ -223,15 +159,6 @@ dry-run test procedure.
     <pre><code data-file-explorer-code>Loading workflow definition...</code></pre>
   </section>
 </div>
-
-```text
-.puppets/prompts/
-  curation.md
-  implementation.md
-  incident-review.md
-  acceptance-review.md
-  remediation.md
-```
 
 Use prompt replacement for repository conventions, validation commands, generated files,
 or domain-specific acceptance evidence. Security rules remain in runtime code and cannot be

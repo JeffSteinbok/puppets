@@ -1,3 +1,22 @@
+const themeToggle = document.querySelector('[data-theme-toggle]');
+const setThemeToggleLabel = () => {
+  if (!themeToggle) return;
+  const currentTheme = document.documentElement.dataset.theme;
+  const targetTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  themeToggle.setAttribute('aria-label', `Use ${targetTheme} mode`);
+  themeToggle.setAttribute('title', `Use ${targetTheme} mode`);
+};
+
+setThemeToggleLabel();
+themeToggle?.addEventListener('click', () => {
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('puppets-theme', theme);
+  setThemeToggleLabel();
+
+  if (document.querySelector('.mermaid')) window.location.reload();
+});
+
 const enhanceCodeBlock = (pre) => {
   if (pre.classList.contains('mermaid') ||
       pre.classList.contains('no-copy') ||
@@ -77,11 +96,20 @@ document.querySelectorAll('[data-file-explorer]').forEach((explorer) => {
 });
 
 if (window.mermaid) {
+  const lightTheme = document.documentElement.dataset.theme === 'light';
   window.mermaid.initialize({
     startOnLoad: false,
-    theme: 'dark',
+    theme: lightTheme ? 'default' : 'dark',
     securityLevel: 'strict',
-    themeVariables: {
+    themeVariables: lightTheme ? {
+      background: '#ffffff',
+      primaryColor: '#eaf2ff',
+      primaryTextColor: '#172033',
+      primaryBorderColor: '#2563eb',
+      lineColor: '#526079',
+      secondaryColor: '#f4f7fb',
+      tertiaryColor: '#dbe5f3',
+    } : {
       background: '#11111b',
       primaryColor: '#1e1e2e',
       primaryTextColor: '#cdd6f4',

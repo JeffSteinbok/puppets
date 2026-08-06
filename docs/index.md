@@ -101,28 +101,9 @@ calls a published version of this public framework. The framework owns
 the reusable workflow, runtime, default lifecycle, prompts, configuration validation, and
 regression tests.
 
-There is no central repository list, no inbound webhook, and no broad token reaching into a
-troupe of repositories.
-
-## Why it is inexpensive
-
-- [Standard GitHub-hosted runners are free for public repositories](https://docs.github.com/en/billing/reference/actions-runner-pricing).
-- Actions usage is attributed to the public caller repository, not a private controller.
-- Deterministic filtering happens before model calls.
-- No model runs before a maintainer approves the issue.
-- The default schedule admits at most one new issue and two in-flight issues per repository.
-- State and sticky verdict comments prevent unnecessary repeated inference.
-- Event-driven triggers remain optional; a staggered daily reconciliation is the initial
-  self-healing safety net.
-
-Copilot and model requests remain separately metered. Moving execution to public callers
-does not make those requests free.
-
-## Specialized profiles
-
-Repository policy can add profiles for work such as incident reviews, release notes, or
-dependency updates without adding new runtime behavior. A profile selects labels, routing,
-and a trusted prompt while retaining the ordinary Puppets trust and review gates.
+Deterministic filtering, human approval, admission limits, and sticky verdict comments
+avoid unnecessary model calls. Copilot and external provider requests remain separately
+metered.
 
 ## Go deeper
 
@@ -138,13 +119,5 @@ and a trusted prompt while retaining the ordinary Puppets trust and review gates
   <a class="puppets-card puppets-link-card" href="configuration.html">
     <strong>Configuration</strong>
     <span>Limits, ignored labels, lifecycle overlays, and trusted prompt replacement.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="security.html">
-    <strong>Security</strong>
-    <span>Approval provenance, untrusted input, fork isolation, and protected invariants.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="profiles.html">
-    <strong>Specialized profiles</strong>
-    <span>Customize routing and prompts without creating special-case runtime behavior.</span>
   </a>
 </div>
