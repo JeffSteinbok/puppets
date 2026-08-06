@@ -8,5 +8,4 @@ header_pages:
   - getting-started.md
   - architecture.md
   - configuration.md
-  - security.md
   - postmortem.md

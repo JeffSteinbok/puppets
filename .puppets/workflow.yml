@@ -1,0 +1,20 @@
+spec:
+  labels:
+    helpers:
+      - name: provider:claude
+        color: "D97706"
+        description: Use Claude Code for issue implementation.
+
+  profiles:
+    - name: claude-test
+      default: false
+      priority: 100
+      selector:
+        allLabels: [provider:claude]
+      routes:
+        approved: claim
+      implementation:
+        prompt: implementation
+        guidance: implementation
+        heading: Puppets implementation instructions
+        provider: claude

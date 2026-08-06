@@ -1,4 +1,4 @@
-Treat this issue as a postmortem for an already-merged bug fix.
+Treat this issue as an incident review for an already-resolved production failure.
 
 Reconstruct the failure, identify its deepest actionable cause, produce a genuine 5-Whys
 analysis, and make surgical hardening changes with regression and sibling-case tests.

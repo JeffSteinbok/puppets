@@ -8,20 +8,6 @@ title: Configuration
 Puppets ships safe defaults. Each caller keeps its policy beside its code, and Puppets loads
 that policy only from the repository's trusted default branch.
 
-## Minimum configuration
-
-Create `.puppets/config.json`:
-
-```json
-{
-  "version": 1,
-  "approvalActors": ["YOUR_GITHUB_LOGIN"]
-}
-```
-
-That is enough to start with the framework defaults. Unknown keys and invalid values fail
-before Puppets mutates an issue or pull request.
-
 ## Available settings
 
 | Setting | Default | Purpose |
@@ -33,26 +19,10 @@ before Puppets mutates an issue or pull request.
 | `conflictRetries` | `2` | Merge-conflict remediation attempts before human escalation. |
 | `reviewRetries` | `2` | Acceptance-review remediation cycles before escalation. |
 | `copilotModel` | `"auto"` | Copilot SDK model used by curation and acceptance review. |
+| `claudeModel` | `""` | Optional model override for the `claude` implementation provider. Empty uses that action's own default. |
+| `codexModel` | `""` | Optional model override for the `codex` implementation provider. Empty uses that action's own default. |
 | `staleHours` | `72` | Age at which untouched issues return to the attention summary. |
 | `ignoreLabels` | `[]` | Repository-owned processes Puppets must leave alone. |
-
-## A practical caller policy
-
-```json
-{
-  "version": 1,
-  "approvalActors": [
-    "JeffSteinbok",
-    "trusted-maintainer"
-  ],
-  "maxNewIssues": 1,
-  "maxInFlight": 2,
-  "reviewRetries": 2,
-  "ignoreLabels": [
-    "manual-only"
-  ]
-}
-```
 
 ### Ignored processes
 
@@ -67,38 +37,13 @@ built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/co
 declares named stages, handler kinds, outcome branches, labels, and profiles.
 
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
-and helper labels merge by identity, so callers do not copy the full workflow.
+and helper labels merge by identity, so callers do not copy the full workflow. Set
+`metadata.name` to give the resolved workflow a repository-specific name in logs and
+workflow summaries. The file explorer below includes a complete incident-review overlay.
 
-```yaml
-spec:
-  labels:
-    controls:
-      - role: opt-out
-        name: automation:skip
-        color: "111111"
-        description: Exclude this item from automation.
-
-  stages:
-    - name: approved
-      label:
-        name: automation:approved
-    - name: ready
-      label:
-        color: "7C3AED"
-
-  profiles:
-    - name: incident-review
-      default: false
-      priority: 100
-      selector:
-        allLabels: [incident-review]
-      routes:
-        approved: claim
-      implementation:
-        prompt: incident-review
-        guidance: null
-        heading: Incident review instructions
-```
+`implementation.prompt` selects a Markdown prompt by name. Add a matching file such as
+`.puppets/prompts/incident-review.md` to replace the framework prompt from the trusted
+default branch. Prompt files are capped at 20 KB.
 
 The compiler rejects duplicate labels, dangling branches, unsupported DSL versions,
 unknown approval routes, missing security roles, and malformed profiles. Label names are
@@ -112,10 +57,54 @@ Profiles select issues by labels and can choose an approval branch, implementati
 trusted guidance file, and heading. Higher-priority matching profiles win; exactly one
 profile must be the default.
 
-## Explore the files
+### Implementation providers
 
-The explorer shows the fully commented basic workflow and a minimal caller overlay. Select
-a file to inspect it, then use **Copy** to place its contents on the clipboard.
+`profile.implementation.provider` selects which agent performs the implementation step for
+issues matching that profile. It defaults to `copilot` and is validated against a fixed,
+code-defined allowlist — `copilot`, `claude`, or `codex` — so a caller overlay can never name
+an arbitrary GitHub Action, only one of these three built-in behaviors:
+
+```yaml
+implementation:
+  provider: claude
+```
+
+**`copilot`** (the default) assigns the GitHub Copilot coding agent to the issue directly, as
+Puppets has always done; it works out of band and Puppets later finds the pull request it
+opens.
+
+**`claude`** and **`codex`** run as GitHub Actions steps instead of an assignable bot.
+Because a reusable workflow's `reconcile.js` step cannot itself invoke a `uses:` step, the
+reconciler emits a small job descriptor (issue number, branch, provider, and prompt/directive
+text — never raw issue or PR body content beyond what a human already sees) and a separate
+`implement` job in `reconcile.yml` runs the framework-selected provider action, then deterministically
+commits, pushes, and opens a **draft** pull request itself. Neither provider action is
+trusted to create the pull request on its own; the draft state keeps claude/codex-authored
+PRs subject to exactly the same CI and acceptance-review gates as a Copilot-authored one
+before a maintainer sees them out of draft.
+
+This job is entirely skipped — no checkout, no secrets used — for any caller where every
+matching profile still uses `copilot`, so adopting providers is opt-in per profile and
+existing callers are unaffected.
+
+**Curation and acceptance review remain Copilot-only.** Selecting `claude` or `codex` only
+changes who implements an approved issue; issue triage/curation and the acceptance-review
+gate before merge still call the Copilot SDK (`copilotModel`) regardless of
+`implementation.provider`. Puppets does not claim Copilot-free operation for a profile that
+uses another implementation provider.
+
+#### Secrets and permissions
+
+`claude` needs `secrets.anthropic_api_key` or `secrets.claude_code_oauth_token` (the latter
+from `claude setup-token`, for Claude Pro/Max plan users, as an alternative to a metered API
+key); `codex` needs `secrets.openai_api_key`. Wire only the secret(s) your chosen provider(s)
+need through the caller workflow's `secrets:` block (see `caller-template.yml`), and set the
+caller's top-level `permissions.contents` to `write` — the `implement` job needs it to push
+branches and open pull requests, and a reusable workflow can never be granted more than the
+calling workflow allows. See [Getting started](getting-started.md) for the full setup and a
+dry-run test procedure.
+
+## Explore the files
 
 <div class="file-explorer" data-file-explorer>
   <nav class="file-explorer-tree" aria-label="Puppets configuration files">
@@ -133,13 +122,13 @@ a file to inspect it, then use **Copy** to place its contents on the clipboard.
     </button>
     <button type="button" class="file-tree-item"
       data-file-name=".puppets/workflow.yml"
-      data-file-url="{{ '/examples/postmortem-workflow.yml' | relative_url }}">
+      data-file-url="{{ '/examples/incident-review-workflow.yml' | relative_url }}">
       <span aria-hidden="true">◇</span> .puppets/workflow.yml
     </button>
     <button type="button" class="file-tree-item"
-      data-file-name=".puppets/prompts/postmortem.md"
-      data-file-url="{{ '/examples/postmortem.md' | relative_url }}">
-      <span aria-hidden="true">#</span> .puppets/prompts/postmortem.md
+      data-file-name=".puppets/prompts/incident-review.md"
+      data-file-url="{{ '/examples/incident-review.md' | relative_url }}">
+      <span aria-hidden="true">#</span> .puppets/prompts/incident-review.md
     </button>
   </nav>
   <section class="file-explorer-view" aria-live="polite">
@@ -156,20 +145,6 @@ a file to inspect it, then use **Copy** to place its contents on the clipboard.
     <pre><code data-file-explorer-code>Loading workflow definition...</code></pre>
   </section>
 </div>
-
-## Prompt replacement
-
-A Markdown file under `.puppets/prompts/` replaces the framework prompt with the same
-name. Prompt files are capped at 20 KB and read only from the trusted default branch.
-
-```text
-.puppets/prompts/
-  curation.md
-  implementation.md
-  postmortem.md
-  acceptance-review.md
-  remediation.md
-```
 
 Use prompt replacement for repository conventions, validation commands, generated files,
 or domain-specific acceptance evidence. Security rules remain in runtime code and cannot be

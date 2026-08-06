@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveConfiguration } = require('../lib/config');
+const { resolveConfiguration } = require('../src/config');
 
 const frameworkRoot = path.resolve(process.env.PUPPETS_FRAMEWORK_ROOT || '.');
 const callerRoot = path.resolve(process.env.PUPPETS_CALLER_ROOT || '.puppets-caller');
@@ -46,6 +46,8 @@ if (envFile) {
     `CONFLICT_RETRIES=${config.conflictRetries}`,
     `REVIEW_RETRIES=${config.reviewRetries}`,
     `COPILOT_MODEL=${config.copilotModel}`,
+    `CLAUDE_MODEL=${config.claudeModel}`,
+    `CODEX_MODEL=${config.codexModel}`,
     `PUPPETS_STALE_HOURS=${config.staleHours}`,
     `PUPPETS_IGNORE_LABELS=${config.ignoreLabels.join(',')}`,
     `PUPPETS_WORKFLOW_PATH=${path.join(outputRoot, 'workflow.json')}`,

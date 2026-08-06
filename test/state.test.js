@@ -4,12 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createStateController } = require('../lib/state');
+const { createStateController } = require('../src/state');
 const {
   compileWorkflow,
   createMachineModel,
   parseWorkflow,
-} = require('../lib/workflow');
+} = require('../src/workflow');
 
 const definition = parseWorkflow(
   fs.readFileSync(path.join(__dirname, '..', 'config', 'workflow.yml'), 'utf8'),

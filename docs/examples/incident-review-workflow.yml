@@ -1,14 +1,17 @@
 # This overlay adds a specialized profile without copying the basic workflow.
+metadata:
+  name: incident-review
+
 spec:
   profiles:
-    - name: postmortem
+    - name: incident-review
       default: false
       priority: 100
 
       # All listed labels must be present for this profile to match.
       selector:
         allLabels:
-          - postmortem
+          - incident-review
 
       # "claim" is a named branch on the basic approval stage, so this profile skips
       # generic curation after the normal human approval gate succeeds.
@@ -17,6 +20,6 @@ spec:
 
       # The prompt may exist only in the caller repository.
       implementation:
-        prompt: postmortem
+        prompt: incident-review
         guidance: null
-        heading: Puppets postmortem instructions
+        heading: Incident review instructions

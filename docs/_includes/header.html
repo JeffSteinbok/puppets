@@ -1,3 +1,8 @@
+<script>
+  document.documentElement.dataset.theme =
+    localStorage.getItem('puppets-theme') ||
+    (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+</script>
 <nav class="puppets-nav" aria-label="Primary navigation">
   <div class="puppets-nav-inner">
     <a class="puppets-nav-logo" href="{{ '/' | relative_url }}">
@@ -9,8 +14,14 @@
       <a href="{{ '/getting-started.html' | relative_url }}">Get started</a>
       <a href="{{ '/architecture.html' | relative_url }}">Architecture</a>
       <a href="{{ '/configuration.html' | relative_url }}">Configuration</a>
-      <a href="{{ '/security.html' | relative_url }}">Security</a>
-      <a href="{{ '/postmortem.html' | relative_url }}">Postmortem</a>
+      <button class="puppets-theme-toggle" type="button" data-theme-toggle>
+        <svg class="theme-icon-light" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3V1m0 22v-2m9-9h2M1 12h2m15.4-6.4 1.4-1.4M4.2 19.8l1.4-1.4m12.8 0 1.4 1.4M4.2 4.2l1.4 1.4M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z"/>
+        </svg>
+        <svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.5 15.2A9 9 0 0 1 8.8 3.5 9 9 0 1 0 20.5 15.2Z"/>
+        </svg>
+      </button>
       <a
         class="puppets-nav-github"
         href="https://github.com/JeffSteinbok/puppets"

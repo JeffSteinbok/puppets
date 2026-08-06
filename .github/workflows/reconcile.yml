@@ -17,6 +17,22 @@ on:
       token:
         description: Optional repository-scoped token used when GITHUB_TOKEN cannot assign Copilot
         required: false
+      anthropic_api_key:
+        description: >-
+          Anthropic API key for the `claude` implementation provider. Not required unless a
+          workflow profile selects `implementation.provider: claude`. Alternative to
+          claude_code_oauth_token.
+        required: false
+      claude_code_oauth_token:
+        description: >-
+          Claude Code OAuth token (from `claude setup-token`, for Claude Pro/Max plans) for the
+          `claude` implementation provider. Alternative to anthropic_api_key.
+        required: false
+      openai_api_key:
+        description: >-
+          OpenAI API key for the `codex` implementation provider. Not required unless a
+          workflow profile selects `implementation.provider: codex`.
+        required: false
     outputs:
       waiting_count:
         description: Number of issues needing human attention
@@ -39,6 +55,7 @@ jobs:
     outputs:
       waiting_count: ${{ steps.reconcile.outputs.waiting_count }}
       waiting_message: ${{ steps.reconcile.outputs.waiting_message }}
+      implementation_jobs: ${{ steps.reconcile.outputs.implementation_jobs }}
     steps:
       - name: Resolve framework revision
         id: framework
@@ -157,3 +174,152 @@ jobs:
           script: |
             const reconcile = require('./.puppets-framework/src/reconcile.js');
             await reconcile({ github, context, core });
+
+  # Runs only when `reconcile` queued at least one claude/codex implementation job (i.e. some
+  # profile's implementation.provider is not the default `copilot`). Fully skipped — no
+  # checkout, no secrets used, no cost — for every caller that only uses the built-in Copilot
+  # provider, keeping that path exactly as it was before providers existed.
+  #
+  # Each matrix entry runs the requested provider action against a deterministic branch
+  # (puppets/issue-<n>) checked out from the caller's default branch, then hands off to
+  # scripts/finalize-implementation.js, which is the only thing that ever commits, pushes, or
+  # opens/updates a pull request — neither provider action is trusted to do that itself. This
+  # keeps the outcome of "assign" and "remediate" jobs identical regardless of which provider
+  # produced the edits, and keeps the rest of the lifecycle (CI, acceptance review, merge)
+  # completely provider-agnostic, since it only ever looks at the resulting pull request.
+  implement:
+    needs: reconcile
+    if: needs.reconcile.outputs.implementation_jobs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.reconcile.outputs.implementation_jobs) }}
+    permissions:
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Resolve framework revision
+        id: framework
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const token = await core.getIDToken('puppets-framework');
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString('utf8')
+            );
+            const expectedWorkflow =
+              'JeffSteinbok/puppets/.github/workflows/reconcile.yml@';
+            if (!payload.job_workflow_ref?.startsWith(expectedWorkflow)) {
+              core.setFailed(`Unexpected reusable workflow: ${payload.job_workflow_ref}`);
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/i.test(payload.job_workflow_sha || '')) {
+              core.setFailed('GitHub did not provide the reusable workflow commit SHA.');
+              return;
+            }
+            core.setOutput('ref', payload.job_workflow_sha);
+
+      # Checked out at the workspace root (rather than a subdirectory, unlike the `reconcile`
+      # job) because anthropics/claude-code-action has no working-directory input and always
+      # operates on $GITHUB_WORKSPACE.
+      - name: Check out caller default branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.token || github.token }}
+
+      # Check out the framework after the root checkout. A later checkout at the workspace
+      # root may remove an earlier nested checkout even with `clean: false`, leaving the
+      # prompt builder and finalizer unable to load their framework modules.
+      - name: Check out Puppets framework
+        uses: actions/checkout@v4
+        with:
+          repository: JeffSteinbok/puppets
+          ref: ${{ steps.framework.outputs.ref }}
+          path: .puppets-framework
+          persist-credentials: false
+
+      - name: Prepare implementation branch
+        id: branch
+        env:
+          PUPPETS_BRANCH: ${{ matrix.branch }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$PUPPETS_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$PUPPETS_BRANCH"
+            git checkout -B "$PUPPETS_BRANCH" "origin/$PUPPETS_BRANCH"
+          else
+            git checkout -B "$PUPPETS_BRANCH"
+          fi
+          echo "start_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # For a fresh assignment, the prompt is exactly what a human already sees: the issue's
+      # own title/body plus the implementation-instructions comment already posted on it (base
+      # prompt + any repo-owned per-repo guidance). For a remediation retry, the reconciler's
+      # own directive text (conflict or acceptance-review remediation) is used as-is via
+      # matrix.directive instead of re-reading the issue.
+      - name: Build implementation prompt
+        id: prompt
+        if: matrix.mode == 'assign'
+        uses: actions/github-script@v9
+        env:
+          PUPPETS_ISSUE_NUMBER: ${{ matrix.issueNumber }}
+        with:
+          github-token: ${{ secrets.token || github.token }}
+          script: |
+            const { IMPLEMENTATION_MARKER } = require('./.puppets-framework/src/providers/markers.js');
+            const { buildAssignPrompt } = require('./.puppets-framework/src/providers/implementation-job.js');
+            const issueNumber = Number.parseInt(process.env.PUPPETS_ISSUE_NUMBER, 10);
+            const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number: issueNumber });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: issueNumber, per_page: 100,
+            });
+            const instructions = comments.find(c => c.body?.includes(IMPLEMENTATION_MARKER))?.body || '';
+            core.setOutput('text', buildAssignPrompt({
+              issueNumber, issueTitle: issue.title, issueBody: issue.body, instructions,
+            }));
+
+      - name: Run Claude Code
+        if: matrix.provider == 'claude'
+        # anthropics/claude-code-action v1 tag, pinned to its resolved commit.
+        uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341
+        with:
+          prompt: ${{ matrix.mode == 'assign' && steps.prompt.outputs.text || matrix.directive }}
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ secrets.token || github.token }}
+          claude_args: --permission-mode acceptEdits
+          # The action has no dedicated model input; a model override is passed the same
+          # way the Claude Code CLI itself supports, via the "model" key of its settings.json.
+          settings: ${{ matrix.model != '' && format('{{"model":{0}}}', toJSON(matrix.model)) || '' }}
+
+      - name: Run Codex
+        if: matrix.provider == 'codex'
+        # openai/codex-action v1 tag, pinned to its resolved commit.
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56
+        with:
+          prompt: ${{ matrix.mode == 'assign' && steps.prompt.outputs.text || matrix.directive }}
+          openai-api-key: ${{ secrets.openai_api_key }}
+          model: ${{ matrix.model }}
+          sandbox: workspace-write
+          allow-bots: true
+
+      - name: Finalize implementation
+        uses: actions/github-script@v9
+        env:
+          PUPPETS_JOB_REPO: ${{ matrix.repo }}
+          PUPPETS_JOB_ISSUE_NUMBER: ${{ matrix.issueNumber }}
+          PUPPETS_JOB_PR_NUMBER: ${{ matrix.prNumber }}
+          PUPPETS_JOB_PROVIDER: ${{ matrix.provider }}
+          PUPPETS_JOB_MODE: ${{ matrix.mode }}
+          PUPPETS_JOB_BRANCH: ${{ matrix.branch }}
+          PUPPETS_JOB_START_SHA: ${{ steps.branch.outputs.start_sha }}
+          PUPPETS_CALLER_ROOT: .
+        with:
+          github-token: ${{ secrets.token || github.token }}
+          script: |
+            const finalize = require('./.puppets-framework/scripts/finalize-implementation.js');
+            await finalize({ github, context, core });
