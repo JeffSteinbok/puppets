@@ -158,24 +158,24 @@ entirely excluded.
 
 ## 7. Add specialized profiles
 
-Domain-specific routing belongs in `.puppets/workflow.yml`. For example, a postmortem
+Domain-specific routing belongs in `.puppets/workflow.yml`. For example, an incident-review
 profile can match a repository label, bypass curation through the declared `claim` branch,
 and select a custom prompt:
 
 ```yaml
 spec:
   profiles:
-    - name: postmortem
+    - name: incident-review
       default: false
       priority: 100
       selector:
-        allLabels: [postmortem]
+        allLabels: [incident-review]
       routes:
         approved: claim
       implementation:
-        prompt: postmortem
+        prompt: incident-review
         guidance: null
-        heading: Postmortem instructions
+        heading: Incident review instructions
 ```
 
 Repository-owned triggers still decide when to create and label the tracking issue. Puppets

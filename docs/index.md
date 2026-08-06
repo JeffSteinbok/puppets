@@ -130,17 +130,14 @@ Configuration cannot weaken these runtime invariants:
 - unknown transitions and invalid configuration are rejected before mutation; and
 - uncertain output or retry exhaustion escalates to a human.
 
-## Postmortem automation
+## Specialized profiles
 
-The `obsidian-onedrive` pilot uses Puppets for approved bug-fix postmortems:
+Repository policy can add profiles for work such as incident reviews, release notes, or
+dependency updates without adding new runtime behavior. A profile selects labels, routing,
+and a trusted prompt while retaining the ordinary Puppets trust and review gates.
 
-- a merged bug-fix PR opens a local postmortem issue;
-- a maintainer approves the issue through the normal Puppets trust gate;
-- Puppets assigns Copilot using the repository's optional postmortem prompt; and
-- repository-owned guard and publishing workflows validate and mirror the writeup.
-
-This keeps domain-specific triggers and security rules beside the repository they govern
-while sharing assignment and lifecycle reconciliation.
+The `obsidian-onedrive` pilot happens to use this mechanism for postmortem hardening; the
+runtime has no postmortem-specific code.
 
 ## Install in a repository
 
@@ -182,9 +179,9 @@ while sharing assignment and lifecycle reconciliation.
     <strong>Security</strong>
     <span>Approval provenance, untrusted input, fork isolation, and protected invariants.</span>
   </a>
-  <a class="puppets-card puppets-link-card" href="postmortem.html">
-    <strong>Postmortem integration</strong>
-    <span>How repository-owned processes coexist without duplicate automation.</span>
+  <a class="puppets-card puppets-link-card" href="profiles.html">
+    <strong>Specialized profiles</strong>
+    <span>Customize routing and prompts without creating special-case runtime behavior.</span>
   </a>
 </div>
 
