@@ -48,7 +48,7 @@ function detectGitHubLogin() {
 function buildCallerWorkflow(provider, template) {
   if (provider === 'copilot') return template;
 
-  let workflow = template.replace('  contents: read', '  contents: write');
+  let workflow = template;
   if (provider === 'claude') {
     workflow = workflow
       .replace('      # anthropic_api_key:', '      anthropic_api_key:')

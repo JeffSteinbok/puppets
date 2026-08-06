@@ -99,10 +99,12 @@ uses another implementation provider.
 from `claude setup-token`, for Claude Pro/Max plan users, as an alternative to a metered API
 key); `codex` needs `secrets.openai_api_key`. Wire only the secret(s) your chosen provider(s)
 need through the caller workflow's `secrets:` block (see `caller-template.yml`), and set the
-caller's top-level `permissions.contents` to `write` — the `implement` job needs it to push
-branches and open pull requests, and a reusable workflow can never be granted more than the
-calling workflow allows. See [Getting started](getting-started.md) for the full setup and a
-dry-run test procedure.
+caller's top-level `permissions.contents` to `write`. GitHub validates the reusable
+workflow's provider job before evaluating whether it is skipped, so this declared maximum is
+required for every caller; only Claude and Codex runs actually use it to push branches and
+open pull requests. A reusable workflow can never receive more access than the caller
+allows. See [Getting started](getting-started.md) for the full setup and a dry-run test
+procedure.
 
 ## Explore the files
 

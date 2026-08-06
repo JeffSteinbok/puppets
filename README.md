@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/ci.yml)
 [![Deploy Pages](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml/badge.svg)](https://github.com/JeffSteinbok/puppets/actions/workflows/pages.yml)
-[![Website](https://img.shields.io/badge/website-puppets-2ea44f?logo=githubpages)](https://JeffSteinbok.github.io/puppets/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[![Documentation and Getting Started](https://img.shields.io/badge/Documentation-Get_started-89b4fa?style=for-the-badge&logo=githubpages&logoColor=white)](https://JeffSteinbok.github.io/puppets/)
 
 Puppets is a pure cloud-based GitHub issue-to-PR automation harness. Each repository runs a
 small caller workflow using GitHub Actions compute and keeps its policy, credentials, state,
@@ -21,7 +22,7 @@ to use Copilot regardless of which implementation provider a profile selects.
 
 | Provider | `implementation.provider` | Repository settings |
 |---|---|---|
-| GitHub Copilot | `copilot` | No secret is normally required. Optionally add `PUPPETS_TOKEN` if `GITHUB_TOKEN` cannot assign Copilot. |
+| GitHub Copilot | `copilot` | Add `PUPPETS_TOKEN`; GitHub Actions installation tokens cannot assign coding agents. |
 | Claude Code | `claude` | Add either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`. |
 | OpenAI Codex | `codex` | Add `OPENAI_API_KEY`. |
 
