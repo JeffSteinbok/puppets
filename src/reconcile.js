@@ -68,7 +68,7 @@ module.exports = async ({ github, context, core }) => {
   // sufficient — the approver's live repo permission is re-checked at approval time.
   const approvalActors = new Set(
     (process.env.PUPPETS_APPROVAL_ACTORS || '')
-      .split('\n')
+      .split(/[\n,]/)
       .map(actor => actor.trim().toLowerCase())
       .filter(Boolean)
   );
