@@ -133,13 +133,13 @@ a file to inspect it, then use **Copy** to place its contents on the clipboard.
     </button>
     <button type="button" class="file-tree-item"
       data-file-name=".puppets/workflow.yml"
-      data-file-url="{{ '/examples/postmortem-workflow.yml' | relative_url }}">
+      data-file-url="{{ '/examples/incident-review-workflow.yml' | relative_url }}">
       <span aria-hidden="true">◇</span> .puppets/workflow.yml
     </button>
     <button type="button" class="file-tree-item"
-      data-file-name=".puppets/prompts/postmortem.md"
-      data-file-url="{{ '/examples/postmortem.md' | relative_url }}">
-      <span aria-hidden="true">#</span> .puppets/prompts/postmortem.md
+      data-file-name=".puppets/prompts/incident-review.md"
+      data-file-url="{{ '/examples/incident-review.md' | relative_url }}">
+      <span aria-hidden="true">#</span> .puppets/prompts/incident-review.md
     </button>
   </nav>
   <section class="file-explorer-view" aria-live="polite">
@@ -166,7 +166,7 @@ name. Prompt files are capped at 20 KB and read only from the trusted default br
 .puppets/prompts/
   curation.md
   implementation.md
-  postmortem.md
+  incident-review.md
   acceptance-review.md
   remediation.md
 ```
