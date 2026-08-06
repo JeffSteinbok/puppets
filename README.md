@@ -41,25 +41,14 @@ for workflow secret mappings, permissions, model overrides, and testing instruct
 
 ## Install
 
-1. Copy [`caller-template.yml`](caller-template.yml) to
-   `.github/workflows/puppets.yml` in a public repository.
-2. Add `.puppets/config.json`:
+From the root of the repository you want Puppets to manage, run:
 
-   ```json
-   {
-     "version": 1,
-     "approvalActors": ["YOUR_GITHUB_LOGIN"]
-   }
-   ```
+```console
+npx --yes github:JeffSteinbok/puppets#main
+```
 
-3. Optionally add `.puppets/workflow.yml` to overlay the versioned `basic` workflow DSL.
-4. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
-   perform Copilot assignment.
-5. Run the workflow manually with `dry_run: true`.
-
-See the [complete getting-started guide](https://JeffSteinbok.github.io/puppets/getting-started.html)
-for the documented caller workflow, permissions, credentials, dry-run rollout, upgrades,
-configuration, and repository-owned process integration.
+No clone or permanent installation is required. See [Getting Started](https://JeffSteinbok.github.io/puppets/getting-started.html)
+for provider selection and a safe rollout.
 
 ## Development
 
