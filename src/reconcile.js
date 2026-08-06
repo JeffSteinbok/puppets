@@ -62,8 +62,16 @@ module.exports = async ({ github, context, core }) => {
   const repos = [process.env.PUPPETS_REPOSITORY?.trim() || context.repo.repo];
   // The token's own identity — used to recognise comments/assignments this
   // automation itself created (so it updates its own markers rather than duplicating).
-  const authenticatedUser = await github.rest.users.getAuthenticated();
-  const automationLogin = authenticatedUser.data.login.toLowerCase();
+  let automationLogin;
+  try {
+    const authenticatedUser = await github.rest.users.getAuthenticated();
+    automationLogin = authenticatedUser.data.login.toLowerCase();
+  } catch (error) {
+    if (error.status !== 403) throw error;
+    // GitHub's ephemeral Actions token cannot access /user; its issue comments use this bot.
+    automationLogin = 'github-actions[bot]';
+    core.info('Using github-actions[bot] as the integration-token identity.');
+  }
   // Logins permitted to approve work. Membership here is necessary but NOT
   // sufficient — the approver's live repo permission is re-checked at approval time.
   const approvalActors = new Set(
