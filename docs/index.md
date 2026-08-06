@@ -7,8 +7,8 @@ title: Puppets
   <div>
     <h1>Puppets</h1>
     <p>
-      Repository-owned, data-driven automation that turns approved GitHub issues into
-      reviewed pull requests without a central controller reaching into your repositories.
+      A pure cloud-based automation harness that turns approved GitHub issues into reviewed
+      pull requests using GitHub Actions compute and repository-owned policy.
     </p>
     <div class="puppets-actions">
       <a class="puppets-button" href="getting-started.html">Install Puppets</a>
@@ -18,24 +18,19 @@ title: Puppets
   <img class="puppets-logo" src="{{ '/assets/puppetslogo.png' | relative_url }}" alt="Puppets logo">
 </section>
 
-<div class="puppets-grid">
-  <div class="puppets-card">
-    <strong>Caller owned</strong>
-    <span>Each repository owns its triggers, permissions, secrets, and local policy.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Shared and pinned</strong>
-    <span>Reusable runtime and defaults come from an immutable public framework commit.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Cheap for public repos</strong>
-    <span>Standard hosted-runner usage is attributed to the public caller repository.</span>
-  </div>
-  <div class="puppets-card">
-    <strong>Fail closed</strong>
-    <span>Approval provenance and repository trust boundaries cannot be overridden.</span>
-  </div>
-</div>
+## Pure cloud automation on GitHub
+
+Puppets has no controller service, server, database, or inbound webhook to deploy. Each
+repository runs a small caller workflow on GitHub-hosted runners, while issues, labels,
+workflow runs, and pull requests hold the complete lifecycle state. The repository owns its
+triggers, permissions, credentials, provider selection, and local policy.
+
+<aside class="puppets-note">
+  <strong>Public repository compute is generally free.</strong>
+  GitHub documents standard GitHub-hosted runner usage as
+  <a href="https://docs.github.com/en/billing/reference/actions-runner-pricing">free for public repositories</a>.
+  Larger runners and external model-provider usage may still incur their own charges.
+</aside>
 
 ## From issue to reviewed pull request
 
@@ -49,8 +44,9 @@ step.
    Puppets verifies who applied the label and checks their current repository permission.
 3. **Curation screens the work.** A read-only agent checks for abuse, duplicates,
    feasibility, and useful classification without changing code.
-4. **Copilot implements it.** A ready issue is admitted under repository limits, assigned
-   to the coding agent, and linked to the resulting pull request.
+4. **The selected provider implements it.** A ready issue is admitted under repository
+   limits, implemented by Copilot, Claude Code, or Codex, and linked to the resulting pull
+   request.
 5. **Evidence is verified.** Normal CI must pass, then an acceptance-review gate judges the
    diff against the issue and available check evidence.
 6. **Failures loop or escalate.** Actionable findings return to Copilot for bounded
@@ -60,6 +56,14 @@ step.
    `puppets:done`. Version 1 never auto-merges.
 
 ## The default `basic` workflow labels
+
+<aside class="puppets-note">
+  <strong>This workflow is a starting point, not a fixed process.</strong>
+  Repositories can override label names, colors, descriptions, stages, routes, profiles,
+  prompts, and provider selection in <code>.puppets/workflow.yml</code>. Puppets preserves
+  the configured workflow while continuing to enforce its non-overridable security
+  boundaries.
+</aside>
 
 | State | Meaning |
 |---|---|
@@ -84,106 +88,23 @@ label strings.
 
 Each managed repository checks in:
 
-```text
+<pre class="no-copy"><code>
 .github/workflows/puppets.yml
 .puppets/
   config.json
   workflow.yml        # optional versioned DSL overlay
-  prompts/             # optional replacements
-```
+  prompts/            # optional replacements
+</code></pre>
 
 The caller workflow owns triggers, concurrency, explicit permissions, and local secrets. It
-calls this public framework at an explicit release tag or commit SHA. The framework owns
+calls a published version of this public framework. The framework owns
 the reusable workflow, runtime, default lifecycle, prompts, configuration validation, and
 regression tests.
 
-There is no central repository list, no inbound webhook, and no broad token reaching into a
-troupe of repositories.
+Deterministic filtering, human approval, admission limits, and sticky verdict comments
+avoid unnecessary model calls. Copilot and external provider requests remain separately
+metered.
 
-## Why it is inexpensive
+## Ready to start?
 
-- Public repositories receive free standard GitHub-hosted runner minutes.
-- Actions usage is attributed to the public caller repository, not a private controller.
-- Deterministic filtering happens before model calls.
-- No model runs before a maintainer approves the issue.
-- The default schedule admits at most one new issue and two in-flight issues per repository.
-- State and sticky verdict comments prevent unnecessary repeated inference.
-- Event-driven triggers remain optional; a staggered daily reconciliation is the initial
-  self-healing safety net.
-
-Copilot and model requests remain separately metered. Moving execution to public callers
-does not make those requests free.
-
-## Data-driven, but not security-configurable
-
-The default `workflow.yml` declares named stages, handler types, outcome branches, labels,
-profiles, in-flight accounting, pull-request projection, and terminal behavior. A caller
-may overlay that machine or add prompts from its trusted default branch.
-
-Configuration cannot weaken these runtime invariants:
-
-- no privileged work before verified approval provenance;
-- permission lookup failures fail closed;
-- the configured opt-out label suppresses all processing;
-- fork or pull-request-head code never executes with write credentials;
-- issue, PR, diff, and check text is untrusted data, never instruction;
-- unknown transitions and invalid configuration are rejected before mutation; and
-- uncertain output or retry exhaustion escalates to a human.
-
-## Specialized profiles
-
-Repository policy can add profiles for work such as incident reviews, release notes, or
-dependency updates without adding new runtime behavior. A profile selects labels, routing,
-and a trusted prompt while retaining the ordinary Puppets trust and review gates.
-
-The `obsidian-onedrive` pilot happens to use this mechanism for postmortem hardening; the
-runtime has no postmortem-specific code.
-
-## Install in a repository
-
-1. Copy the
-   [caller template](https://github.com/JeffSteinbok/puppets/blob/main/caller-template.yml)
-   to `.github/workflows/puppets.yml`.
-2. Replace `FRAMEWORK_REF` with a release tag such as `v1`, or a full commit SHA for
-   strict pinning.
-3. Add `.puppets/config.json`:
-
-   ```json
-   {
-     "version": 1,
-     "approvalActors": ["YOUR_GITHUB_LOGIN"]
-   }
-   ```
-
-4. Add a repository-scoped `PUPPETS_TOKEN` only if the caller's `GITHUB_TOKEN` cannot
-   perform Copilot assignment.
-5. Run **Puppets** manually with `dry_run: true`.
-6. Review the workflow summary, then enable the staggered schedule.
-
-## Go deeper
-
-<div class="puppets-grid">
-  <a class="puppets-card puppets-link-card" href="getting-started.html">
-    <strong>Getting started</strong>
-    <span>Complete caller workflow, permissions, credentials, dry run, and upgrade process.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="architecture.html">
-    <strong>Architecture</strong>
-    <span>Caller context, reusable workflow packaging, credentials, and state ownership.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="configuration.html">
-    <strong>Configuration</strong>
-    <span>Limits, ignored labels, lifecycle overlays, and trusted prompt replacement.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="security.html">
-    <strong>Security</strong>
-    <span>Approval provenance, untrusted input, fork isolation, and protected invariants.</span>
-  </a>
-  <a class="puppets-card puppets-link-card" href="profiles.html">
-    <strong>Specialized profiles</strong>
-    <span>Customize routing and prompts without creating special-case runtime behavior.</span>
-  </a>
-</div>
-
-The first live caller is
-[`JeffSteinbok/obsidian-onedrive`](https://github.com/JeffSteinbok/obsidian-onedrive).
+<a class="puppets-button" href="getting-started.html">Get started with Puppets</a>

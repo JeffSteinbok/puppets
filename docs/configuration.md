@@ -8,20 +8,6 @@ title: Configuration
 Puppets ships safe defaults. Each caller keeps its policy beside its code, and Puppets loads
 that policy only from the repository's trusted default branch.
 
-## Minimum configuration
-
-Create `.puppets/config.json`:
-
-```json
-{
-  "version": 1,
-  "approvalActors": ["YOUR_GITHUB_LOGIN"]
-}
-```
-
-That is enough to start with the framework defaults. Unknown keys and invalid values fail
-before Puppets mutates an issue or pull request.
-
 ## Available settings
 
 | Setting | Default | Purpose |
@@ -38,24 +24,6 @@ before Puppets mutates an issue or pull request.
 | `staleHours` | `72` | Age at which untouched issues return to the attention summary. |
 | `ignoreLabels` | `[]` | Repository-owned processes Puppets must leave alone. |
 
-## A practical caller policy
-
-```json
-{
-  "version": 1,
-  "approvalActors": [
-    "JeffSteinbok",
-    "trusted-maintainer"
-  ],
-  "maxNewIssues": 1,
-  "maxInFlight": 2,
-  "reviewRetries": 2,
-  "ignoreLabels": [
-    "manual-only"
-  ]
-}
-```
-
 ### Ignored processes
 
 `ignoreLabels` supports repository-owned processes that should coexist with Puppets without
@@ -69,38 +37,13 @@ built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/co
 declares named stages, handler kinds, outcome branches, labels, and profiles.
 
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
-and helper labels merge by identity, so callers do not copy the full workflow.
+and helper labels merge by identity, so callers do not copy the full workflow. Set
+`metadata.name` to give the resolved workflow a repository-specific name in logs and
+workflow summaries. The file explorer below includes a complete incident-review overlay.
 
-```yaml
-spec:
-  labels:
-    controls:
-      - role: opt-out
-        name: automation:skip
-        color: "111111"
-        description: Exclude this item from automation.
-
-  stages:
-    - name: approved
-      label:
-        name: automation:approved
-    - name: ready
-      label:
-        color: "7C3AED"
-
-  profiles:
-    - name: incident-review
-      default: false
-      priority: 100
-      selector:
-        allLabels: [incident-review]
-      routes:
-        approved: claim
-      implementation:
-        prompt: incident-review
-        guidance: null
-        heading: Incident review instructions
-```
+`implementation.prompt` selects a Markdown prompt by name. Add a matching file such as
+`.puppets/prompts/incident-review.md` to replace the framework prompt from the trusted
+default branch. Prompt files are capped at 20 KB.
 
 The compiler rejects duplicate labels, dangling branches, unsupported DSL versions,
 unknown approval routes, missing security roles, and malformed profiles. Label names are
@@ -122,20 +65,8 @@ code-defined allowlist — `copilot`, `claude`, or `codex` — so a caller overl
 an arbitrary GitHub Action, only one of these three built-in behaviors:
 
 ```yaml
-spec:
-  profiles:
-    - name: incident-review
-      default: false
-      priority: 100
-      selector:
-        allLabels: [incident-review]
-      routes:
-        approved: claim
-      implementation:
-        prompt: incident-review
-        guidance: null
-        heading: Incident review instructions
-        provider: claude
+implementation:
+  provider: claude
 ```
 
 **`copilot`** (the default) assigns the GitHub Copilot coding agent to the issue directly, as
@@ -146,7 +77,7 @@ opens.
 Because a reusable workflow's `reconcile.js` step cannot itself invoke a `uses:` step, the
 reconciler emits a small job descriptor (issue number, branch, provider, and prompt/directive
 text — never raw issue or PR body content beyond what a human already sees) and a separate
-`implement` job in `reconcile.yml` runs the pinned provider action, then deterministically
+`implement` job in `reconcile.yml` runs the framework-selected provider action, then deterministically
 commits, pushes, and opens a **draft** pull request itself. Neither provider action is
 trusted to create the pull request on its own; the draft state keeps claude/codex-authored
 PRs subject to exactly the same CI and acceptance-review gates as a Copilot-authored one
@@ -174,9 +105,6 @@ calling workflow allows. See [Getting started](getting-started.md) for the full 
 dry-run test procedure.
 
 ## Explore the files
-
-The explorer shows the fully commented basic workflow and a minimal caller overlay. Select
-a file to inspect it, then use **Copy** to place its contents on the clipboard.
 
 <div class="file-explorer" data-file-explorer>
   <nav class="file-explorer-tree" aria-label="Puppets configuration files">
@@ -217,20 +145,6 @@ a file to inspect it, then use **Copy** to place its contents on the clipboard.
     <pre><code data-file-explorer-code>Loading workflow definition...</code></pre>
   </section>
 </div>
-
-## Prompt replacement
-
-A Markdown file under `.puppets/prompts/` replaces the framework prompt with the same
-name. Prompt files are capped at 20 KB and read only from the trusted default branch.
-
-```text
-.puppets/prompts/
-  curation.md
-  implementation.md
-  incident-review.md
-  acceptance-review.md
-  remediation.md
-```
 
 Use prompt replacement for repository conventions, validation commands, generated files,
 or domain-specific acceptance evidence. Security rules remain in runtime code and cannot be

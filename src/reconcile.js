@@ -33,7 +33,7 @@
  * and then deterministically commit, push, and open or update the linked pull request.
  * Curation and acceptance review always call the Copilot SDK directly (`callCopilot`)
  * regardless of a profile's implementation provider — reasoning/judgment steps remain
- * Copilot-only; only the implementation step is provider-neutral. See docs/security.md.
+ * Copilot-only; only the implementation step is provider-neutral.
  *
  * Configuration is passed entirely through environment variables (wired up by the
  * calling workflow):
@@ -120,6 +120,7 @@ module.exports = async ({ github, context, core }) => {
     throw new Error(`Could not load ${workflowPath}: ${error.message}`);
   }
   const model = createMachineModel(machine);
+  core.info(`Resolved workflow: ${machine.name}`);
   const {
     stateMetadataByName,
     stateNameByLabel,
@@ -595,7 +596,7 @@ module.exports = async ({ github, context, core }) => {
   // the `implementation_jobs` output (below) to run the action against a checked-out branch
   // and deterministically commit, push, and open or update the linked pull request. Every
   // field here is derived from trusted runtime state (issue number, resolved profile,
-  // pinned model name) — never copied verbatim from issue/PR body text.
+  // configured model name) — never copied verbatim from issue/PR body text.
   const implementationJobs = [];
   function queueImplementationJob({ repo, issue, provider, mode, prNumber, branch, directive }) {
     implementationJobs.push({
@@ -1561,7 +1562,7 @@ module.exports = async ({ github, context, core }) => {
   // callers who never opt into an alternate provider.
   core.setOutput('implementation_jobs', JSON.stringify(implementationJobs));
   await core.summary
-    .addHeading('Puppets lifecycle')
+    .addHeading(`Puppets lifecycle: ${machine.name}`)
     .addRaw(`Assigned: ${assigned}\n\nNeeds your attention: ${attentionCount}\n\n${waitingMessage}`)
     .write();
 };
