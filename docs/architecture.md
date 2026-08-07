@@ -201,8 +201,8 @@ jobs:
 
 ## Trigger strategy
 
-Version 1 uses a daily schedule and manual dry runs. Repository-local event triggers may be
-added later, while the schedule remains the self-healing reconciliation pass.
+Version 1 uses a six-hour schedule and manual dry runs. Repository-local event triggers may
+be added later, while the schedule remains the self-healing reconciliation pass.
 
 Schedules should be staggered across repositories to spread API and model traffic. Event
 triggers, when added, remain local and invoke the same reusable workflow—never an inbound

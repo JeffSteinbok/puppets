@@ -381,8 +381,12 @@ module.exports = async ({ github, context, core }) => {
     core.warning(
       `${repo}#${issue.number}: rejected downstream Puppets state because ${approval.reason}.`
     );
-    if (pr) await clearPrState(repo, pr.number);
-    await clearState(repo, issue);
+    if (pr) await clearPrState(repo, pr.number, {
+      reason: `Clearing mirrored state because the linked issue approval is no longer trusted: ${approval.reason}.`,
+    });
+    await clearState(repo, issue, {
+      reason: `Clearing workflow state because the latest approval is no longer trusted: ${approval.reason}.`,
+    });
     await comment(
       repo,
       issue.node_id,
@@ -808,7 +812,9 @@ module.exports = async ({ github, context, core }) => {
       if (!dupeNum) {
         // Model said duplicate but gave no issue number — bias toward ready.
         core.warning(`${repo}#${issue.number}: duplicate verdict has no duplicate_of; treating as ready.`);
-        await setState(repo, issue, 'ready');
+        await setState(repo, issue, 'ready', {
+          reason: 'Curation reported a duplicate without a target issue, so Puppets is treating it as ready for implementation.',
+        });
         return;
       }
       console.log(`#${issue.number}: duplicate of #${dupeNum} → closing`);
@@ -827,7 +833,9 @@ module.exports = async ({ github, context, core }) => {
         repo, number: issue.number,
         title: `${issue.title} (needs-human: curation — ${verdict.reason || 'see comment'})`,
       });
-      await setState(repo, issue, 'needs-human');
+      await setState(repo, issue, 'needs-human', {
+        reason: `Curation escalated this item for human review${verdict.reason ? `: ${verdict.reason}` : '.'}`,
+      });
 
     } else {
       // decision === 'ready': apply auto-labels, then mark ready.
@@ -851,7 +859,9 @@ module.exports = async ({ github, context, core }) => {
         }
         // Any other unknown label name is silently skipped for safety.
       }
-      await setState(repo, issue, 'ready');
+      await setState(repo, issue, 'ready', {
+        reason: `Curation passed and marked the item ready${verdict.reason ? `: ${verdict.reason}` : '.'}`,
+      });
       console.log(`#${issue.number}: curation passed → ready`);
     }
   }
@@ -1092,7 +1102,9 @@ module.exports = async ({ github, context, core }) => {
         return;
       }
     }
-    await setLinkedState(repo, issue, pr, 'in-review');
+    await setLinkedState(repo, issue, pr, 'in-review', {
+      reason: `PR #${pr.number} passed CI and acceptance review, so it is ready for maintainer review.`,
+    });
   }
 
   async function runAcceptanceReview(repo, issue, pr, reviewInstructions, botIdRef) {
@@ -1100,7 +1112,9 @@ module.exports = async ({ github, context, core }) => {
     try {
       existing = await getAcceptanceRecord(repo, pr.number);
     } catch (error) {
-      await setLinkedState(repo, issue, pr, 'verifying');
+      await setLinkedState(repo, issue, pr, 'verifying', {
+        reason: `Puppets could not read the existing acceptance-review record for PR #${pr.number}, so it is keeping verification active.`,
+      });
       core.warning(
         `Could not read acceptance review state for ${repo}#${pr.number}: ${error.message}. ` +
         'Leaving the issue and PR in verifying.'
@@ -1134,9 +1148,13 @@ module.exports = async ({ github, context, core }) => {
             return;
           }
         }
-        await setLinkedState(repo, issue, pr, 'needs-work');
+        await setLinkedState(repo, issue, pr, 'needs-work', {
+          reason: `The acceptance review for PR #${pr.number} found blocking changes that need remediation.`,
+        });
       } else {
-        await setLinkedState(repo, issue, pr, 'needs-human');
+        await setLinkedState(repo, issue, pr, 'needs-human', {
+          reason: `The acceptance review for PR #${pr.number} requires human intervention.`,
+        });
         waiting.push({
           repo, number: issue.number,
           title: `${issue.title} (needs-human: acceptance review on PR #${pr.number})`,
@@ -1146,7 +1164,9 @@ module.exports = async ({ github, context, core }) => {
     }
 
     console.log(`#${issue.number}: PR #${pr.number} green -> verifying ${pr.headRefOid.slice(0, 12)}`);
-    await setLinkedState(repo, issue, pr, 'verifying');
+    await setLinkedState(repo, issue, pr, 'verifying', {
+      reason: `PR #${pr.number} has a successful CI rollup at ${pr.headRefOid.slice(0, 12)}, so Puppets is running acceptance verification.`,
+    });
     if (!prompts.acceptanceReview) {
       core.warning(`${repo}#${pr.number}: acceptance-review.md is missing; remaining in verifying.`);
       return;
@@ -1236,10 +1256,14 @@ module.exports = async ({ github, context, core }) => {
         );
         return;
       }
-      await setLinkedState(repo, issue, pr, 'needs-work');
+      await setLinkedState(repo, issue, pr, 'needs-work', {
+        reason: `The acceptance review for PR #${pr.number} requested changes: ${verdict.summary}`,
+      });
     } else {
       console.log(`#${issue.number}: PR #${pr.number} acceptance needs human -> needs-human`);
-      await setLinkedState(repo, issue, pr, 'needs-human');
+      await setLinkedState(repo, issue, pr, 'needs-human', {
+        reason: `The acceptance review for PR #${pr.number} needs human help: ${verdict.summary}`,
+      });
       waiting.push({
         repo, number: issue.number,
         title: `${issue.title} (needs-human: acceptance review on PR #${pr.number})`,
@@ -1256,7 +1280,9 @@ module.exports = async ({ github, context, core }) => {
     if (currentStateName(repo, issue) === 'needs-human') {
       const approval = await validApproval(repo, issue);
       if (!approval.valid || !pr.merged) {
-        await setPrState(repo, pr.number, 'needs-human');
+        await setPrState(repo, pr.number, 'needs-human', {
+          reason: 'Mirroring the linked issue handoff while Puppets waits for a trusted approval or merged PR.',
+        });
         return;
       }
     } else if (!await requireTrustedApproval(repo, issue, pr)) {
@@ -1267,7 +1293,9 @@ module.exports = async ({ github, context, core }) => {
       if (currentStateName(repo, issue) !== 'done') {
         console.log(`#${issue.number}: PR #${pr.number} merged -> done`);
       }
-      await setLinkedState(repo, issue, pr, 'done');
+      await setLinkedState(repo, issue, pr, 'done', {
+        reason: `Linked PR #${pr.number} was merged, so the Puppets lifecycle is complete.`,
+      });
       return;
     }
     if (pr.state !== 'OPEN') return; // closed unmerged -> leave for a human
@@ -1275,7 +1303,9 @@ module.exports = async ({ github, context, core }) => {
     const rerunCount = await rerunActionRequiredWorkflows(repo, pr);
     if (rerunCount > 0) {
       const currentState = currentStateName(repo, issue);
-      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState);
+      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState, {
+        reason: `Workflow reruns were requested for PR #${pr.number}; keeping the PR label aligned while checks run again.`,
+      });
       return;
     }
 
@@ -1285,7 +1315,9 @@ module.exports = async ({ github, context, core }) => {
     if (pr.isDraft) {
       if (rollupState(pr) !== 'SUCCESS') {
         const currentState = currentStateName(repo, issue);
-        if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState);
+        if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState, {
+          reason: `PR #${pr.number} is still a draft and CI has not passed yet, so the mirrored state stays aligned.`,
+        });
         return; // still a working draft
       }
     }
@@ -1302,13 +1334,17 @@ module.exports = async ({ github, context, core }) => {
         }
       }
       const currentState = currentStateName(repo, issue);
-      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState);
+      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState, {
+        reason: `PR #${pr.number} is behind the base branch; Puppets requested an update and kept the PR state aligned.`,
+      });
       return;
     } else if (!wasDraft && pr.mergeable === 'CONFLICTING') {
       const { attempts, commentNodeId } = await getConflictAttempts(repo, pr.number);
       if (attempts >= conflictRetries) {
         console.log(`#${issue.number}: PR #${pr.number} conflict unresolved after ${attempts} -> needs-human`);
-        await setLinkedState(repo, issue, pr, 'needs-human');
+        await setLinkedState(repo, issue, pr, 'needs-human', {
+          reason: `PR #${pr.number} still has merge conflicts after ${attempts} automated remediation attempts.`,
+        });
         await setConflictAttempts(repo, pr.id, attempts, 'Escalated to a human — automated resolution exhausted.', commentNodeId);
         waiting.push({ repo, number: issue.number, title: `${issue.title} (needs-human: merge conflict on PR #${pr.number})` });
         return;
@@ -1318,7 +1354,9 @@ module.exports = async ({ github, context, core }) => {
         await reprompt(repo, issue, pr, botIdRef,
           render(prompts.conflict, { attempt: next, total: conflictRetries }));
         await setConflictAttempts(repo, pr.id, next, 'Asked the implementation provider to resolve the conflict on its branch.', commentNodeId);
-        await setLinkedState(repo, issue, pr, 'needs-work');
+        await setLinkedState(repo, issue, pr, 'needs-work', {
+          reason: `PR #${pr.number} has merge conflicts; Puppets requested remediation attempt ${next} of ${conflictRetries}.`,
+        });
         return;
       }
     }
@@ -1327,7 +1365,9 @@ module.exports = async ({ github, context, core }) => {
     if (rollupState(pr) !== 'SUCCESS') {
       const currentState = currentStateName(repo, issue);
       console.log(`#${issue.number}: PR #${pr.number} CI ${rollupState(pr) || 'missing'} -> wait`);
-      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState);
+      if (currentState !== 'untracked') await setPrState(repo, pr.number, currentState, {
+        reason: `PR #${pr.number} CI is ${rollupState(pr) || 'missing'}, so Puppets is waiting before advancing.`,
+      });
       return;
     }
 
@@ -1436,7 +1476,9 @@ module.exports = async ({ github, context, core }) => {
           const approval = await validApproval(repo, issue);
           if (!approval.valid) {
             console.log(`#${issue.number}: invalid approval (${approval.reason})`);
-            await clearState(repo, issue);
+            await clearState(repo, issue, {
+              reason: `Clearing workflow state because the latest approval is invalid: ${approval.reason}.`,
+            });
             await comment(
               repo,
               issue.node_id,
@@ -1466,7 +1508,9 @@ module.exports = async ({ github, context, core }) => {
               await upsertProfileInstructions(profile, repo, issue, defaultBranch);
               await beginImplementation(repo, issue, profile, botIdRef);
             }
-            await setState(repo, issue, routeTarget);
+            await setState(repo, issue, routeTarget, {
+              reason: `Approved by ${approval.actor}; the ${profile.name} profile routes this item to ${routeTarget}.`,
+            });
             assignedInRepo++;
             assigned++;
             console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${profile.implementation.provider}`);
@@ -1481,13 +1525,17 @@ module.exports = async ({ github, context, core }) => {
             );
           }
           console.log(`#${issue.number}: approved by ${approval.actor} → ${routeTarget}`);
-          await setState(repo, issue, routeTarget);
+          await setState(repo, issue, routeTarget, {
+            reason: `Approved by ${approval.actor}; the ${profile.name} profile routes this item to ${routeTarget}.`,
+          });
           try {
             await curateIssue(repo, issue, issues, repoLabelNames);
             if (issue.state === 'closed') continue;
           } catch (error) {
             core.warning(`Curation failed for ${repo}#${issue.number}: ${error.message}. Rolling back to approved.`);
-            await setState(repo, issue, 'approved');
+            await setState(repo, issue, 'approved', {
+              reason: `Curation failed before completing, so Puppets rolled the item back for a later retry: ${error.message}.`,
+            });
           }
           continue;
         }
@@ -1528,7 +1576,9 @@ module.exports = async ({ github, context, core }) => {
             await beginImplementation(repo, issue, readyProfile, botIdRef);
           }
 
-          await setState(repo, issue, 'claimed');
+          await setState(repo, issue, 'claimed', {
+            reason: `The item was ready and capacity is available, so Puppets assigned ${readyProfile.implementation.provider} to implement it.`,
+          });
           assignedInRepo++;
           assigned++;
           console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${readyProfile.implementation.provider}`);
@@ -1537,7 +1587,10 @@ module.exports = async ({ github, context, core }) => {
 
         if (state === 'needs-human') {
           if (!waitingKeys.has(issueKey)) {
-            await setState(repo, issue, 'needs-human', { validateTransition: false });
+            await setState(repo, issue, 'needs-human', {
+              validateTransition: false,
+              reason: 'Puppets found this item in the human-handoff state and is preserving that state while it waits.',
+            });
           }
           pushWaiting({ repo, number: issue.number, title: issue.title });
           continue;
@@ -1555,7 +1608,9 @@ module.exports = async ({ github, context, core }) => {
 
         if (!hasEnoughDetail(issue)) {
           console.log(`#${issue.number}: needs more information`);
-          await setState(repo, issue, 'needs-info');
+          await setState(repo, issue, 'needs-info', {
+            reason: 'The issue does not yet include enough detail for Puppets to safely act on it.',
+          });
           await comment(repo, issue.node_id, prompts.needsInfo);
         }
       }

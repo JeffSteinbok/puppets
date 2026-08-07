@@ -59,6 +59,32 @@ function createStateController({ github, core, owner, dryRun, model }) {
     }
   };
 
+  const describeItem = (repo, issue) => `${repo}#${issue.number}`;
+
+  const stateChangeBody = ({ currentState, nextState, reason }) => [
+    '**Puppets state change**',
+    '',
+    `- from: \`${currentState}\``,
+    `- to: \`${nextState}\``,
+    `- why: ${reason || 'Puppets reconciled this item to the next workflow state.'}`,
+  ].join('\n');
+
+  async function commentStateChange(repo, issue, currentState, nextState, reason) {
+    const body = stateChangeBody({ currentState, nextState, reason });
+    console.log(
+      `  state ${describeItem(repo, issue)} ${currentState} -> ${nextState}: ` +
+      (reason || 'no reason provided')
+    );
+    if (!dryRun) {
+      await github.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issue.number,
+        body,
+      });
+    }
+  }
+
   async function addLabel(repo, issueNumber, label) {
     console.log(`  + ${label}`);
     if (!dryRun) {
@@ -100,18 +126,30 @@ function createStateController({ github, core, owner, dryRun, model }) {
       }
     }
     trackedStates.set(itemKey(repo, issue), nextState);
+    if (currentState !== nextState) {
+      await commentStateChange(repo, issue, currentState, nextState, options.reason);
+    } else {
+      console.log(`  state ${describeItem(repo, issue)} remains ${nextState}`);
+    }
   }
 
-  async function clearState(repo, issue) {
+  async function clearState(repo, issue, options = {}) {
+    const currentState = currentStateName(repo, issue);
     const labels = currentLabels(repo, issue);
+    const hadStateLabel = [...labels].some(label => stateLabels.has(label));
     for (const label of stateLabels) {
       await removeLabel(repo, issue.number, label, labels);
       labels.delete(label);
     }
     trackedStates.set(itemKey(repo, issue), machine.start);
+    if (hadStateLabel || currentState !== machine.start) {
+      await commentStateChange(repo, issue, currentState, machine.start, options.reason);
+    } else {
+      console.log(`  state ${describeItem(repo, issue)} remains ${machine.start}`);
+    }
   }
 
-  async function setPrState(repo, prNumber, nextState) {
+  async function setPrState(repo, prNumber, nextState, options = {}) {
     if (!stateNames.has(nextState)) throw new Error(`Unknown Puppets state "${nextState}"`);
     if (!stateMetadataByName.get(nextState).mirrorToPr) return;
     const { data: prAsIssue } = await github.rest.issues.get({
@@ -119,21 +157,26 @@ function createStateController({ github, core, owner, dryRun, model }) {
       repo,
       issue_number: prNumber,
     });
-    await setState(repo, prAsIssue, nextState, { validateTransition: false });
+    await setState(repo, prAsIssue, nextState, {
+      validateTransition: false,
+      reason: options.reason || `Mirroring the linked issue state to PR #${prNumber}.`,
+    });
   }
 
-  async function clearPrState(repo, prNumber) {
+  async function clearPrState(repo, prNumber, options = {}) {
     const { data: prAsIssue } = await github.rest.issues.get({
       owner,
       repo,
       issue_number: prNumber,
     });
-    await clearState(repo, prAsIssue);
+    await clearState(repo, prAsIssue, options);
   }
 
-  async function setLinkedState(repo, issue, pr, nextState) {
-    await setPrState(repo, pr.number, nextState);
-    await setState(repo, issue, nextState);
+  async function setLinkedState(repo, issue, pr, nextState, options = {}) {
+    await setPrState(repo, pr.number, nextState, {
+      reason: options.prReason || `Mirroring issue #${issue.number} state on this linked PR.`,
+    });
+    await setState(repo, issue, nextState, options);
   }
 
   return {

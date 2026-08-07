@@ -32,6 +32,7 @@ test('setup arguments default to Copilot', () => {
 test('Copilot setup grants the reusable workflow declared permissions', () => {
   const workflow = buildCallerWorkflow('copilot', callerTemplate);
   assert.match(workflow, /  contents: write/);
+  assert.match(workflow, /cron: "0 \*\/6 \* \* \*"/);
 });
 
 test('Claude setup grants write access and maps both authentication options', () => {
