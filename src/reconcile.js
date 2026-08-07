@@ -1,9 +1,9 @@
 /**
  * Puppets — lifecycle reconciler.
  *
- * This module is the whole engine behind Puppets: a single, stateless pass that
+ * This module is the whole engine behind Puppets: a stateless reconciler that
  * walks the caller repository and nudges every issue and pull request
- * one step further along the lifecycle. It is invoked by the reusable workflow
+ * through immediate lifecycle steps (bounded per run). It is invoked by the reusable workflow
  * `puppets-reconcile.yml` through `actions/github-script`, which supplies the
  * `{ github, context, core }` toolkit (an authenticated Octokit, the workflow
  * context, and the Actions core helpers).
@@ -82,6 +82,8 @@ module.exports = async ({ github, context, core }) => {
   // and simply defers to that provider action's own default model.
   const claudeModel = process.env.CLAUDE_MODEL?.trim() || '';
   const codexModel = process.env.CODEX_MODEL?.trim() || '';
+  // Bounded fixpoint passes for immediate issue transitions inside one reconcile run.
+  const immediatePassLimit = Math.max(1, Number.parseInt(process.env.PUPPETS_IMMEDIATE_PASSES, 10) || 4);
   const repos = [process.env.PUPPETS_REPOSITORY?.trim() || context.repo.repo];
   // The token's own identity — used to recognise comments/assignments this
   // automation itself created (so it updates its own markers rather than duplicating).
@@ -816,11 +818,12 @@ module.exports = async ({ github, context, core }) => {
           state: 'closed', state_reason: 'not_planned',
         });
       }
+      issue.state = 'closed';
       // Issue is now closed; no further label transition needed.
 
     } else if (decision === 'needs-human') {
       console.log(`#${issue.number}: curation escalated → needs-human`);
-      waiting.push({
+      pushWaiting({
         repo, number: issue.number,
         title: `${issue.title} (needs-human: curation — ${verdict.reason || 'see comment'})`,
       });
@@ -1332,9 +1335,24 @@ module.exports = async ({ github, context, core }) => {
   }
 
   const waiting = [];
+  const waitingKeys = new Set();
   const inbox = [];
   const inboxKeys = new Set(); // tracks `${repo}#${number}` — used to de-dup stale list
   const stale = [];
+  const staleKeys = new Set();
+  const passReports = [];
+  const pushWaiting = item => {
+    const key = `${item.repo}#${item.number}`;
+    if (waitingKeys.has(key)) return;
+    waitingKeys.add(key);
+    waiting.push(item);
+  };
+  const pushStale = item => {
+    const key = `${item.repo}#${item.number}`;
+    if (staleKeys.has(key)) return;
+    staleKeys.add(key);
+    stale.push(item);
+  };
   let assigned = 0;
 
   for (const repo of repos) {
@@ -1377,151 +1395,187 @@ module.exports = async ({ github, context, core }) => {
     // in-flight reprompting so a repo never looks it up more than once per run.
     const botIdRef = { id: undefined };
 
-    for (const issue of issues) {
-      if (issue.pull_request || isBotFiled(issue)) continue;
-      const labels = issueLabels(issue);
-      if (isIgnored(labels)) continue;
-      const state = currentStateName(repo, issue);
+    let repoPass = 0;
+    let passStopReason = 'steady-state';
+    while (repoPass < immediatePassLimit) {
+      repoPass++;
+      console.log(`↻ ${repo}: immediate pass ${repoPass}/${immediatePassLimit}`);
+      const passStartStates = new Map();
+      for (const issue of issues) {
+        if (issue.state === 'closed' || issue.pull_request || isBotFiled(issue)) continue;
+        const labels = issueLabels(issue);
+        if (isIgnored(labels)) continue;
+        passStartStates.set(issue.number, currentStateName(repo, issue));
+      }
 
-      const hasState = [...labels].some(label => stateNameByLabel.has(label));
-      // New arrival with no workflow state label yet -> needs your decision (approve or
-      // ignore). Announced once, keyed off the inbox cutoff above.
-      if (new Date(issue.created_at) > inboxSince &&
-          !hasState) {
-        inbox.push({ repo, number: issue.number, title: issue.title });
-        inboxKeys.add(`${repo}#${issue.number}`);
-      }
-      // Stale un-triaged: no workflow state label, older than staleHours, not in the new-issues
-      // inbox (de-duped by key so a brand-new issue never appears in both sections).
-      if (!hasState &&
-          new Date(issue.created_at) <= staleThreshold &&
-          !inboxKeys.has(`${repo}#${issue.number}`)) {
-        stale.push({ repo, number: issue.number, title: issue.title });
-      }
-      if (state === 'approved') {
-        const approval = await validApproval(repo, issue);
-        if (!approval.valid) {
-          console.log(`#${issue.number}: invalid approval (${approval.reason})`);
-          await clearState(repo, issue);
-          await comment(
-            repo,
-            issue.node_id,
-            render(prompts.invalidApproval, {
-              reason: approval.reason,
-              approvalLabel,
-            })
-          );
+      for (const issue of issues) {
+        if (issue.state === 'closed' || issue.pull_request || isBotFiled(issue)) continue;
+        const labels = issueLabels(issue);
+        if (isIgnored(labels)) continue;
+        const state = currentStateName(repo, issue);
+        const issueKey = `${repo}#${issue.number}`;
+
+        const hasState = [...labels].some(label => stateNameByLabel.has(label));
+        // New arrival with no workflow state label yet -> needs your decision (approve or
+        // ignore). Announced once, keyed off the inbox cutoff above.
+        if (new Date(issue.created_at) > inboxSince &&
+            !hasState &&
+            !inboxKeys.has(issueKey)) {
+          inbox.push({ repo, number: issue.number, title: issue.title });
+          inboxKeys.add(issueKey);
+        }
+        // Stale un-triaged: no workflow state label, older than staleHours, not in the new-issues
+        // inbox (de-duped by key so a brand-new issue never appears in both sections).
+        if (!hasState &&
+            new Date(issue.created_at) <= staleThreshold &&
+            !inboxKeys.has(issueKey)) {
+          pushStale({ repo, number: issue.number, title: issue.title });
+        }
+        if (state === 'approved') {
+          const approval = await validApproval(repo, issue);
+          if (!approval.valid) {
+            console.log(`#${issue.number}: invalid approval (${approval.reason})`);
+            await clearState(repo, issue);
+            await comment(
+              repo,
+              issue.node_id,
+              render(prompts.invalidApproval, {
+                reason: approval.reason,
+                approvalLabel,
+              })
+            );
+            continue;
+          }
+
+          const profile = resolveProfile(labels);
+          const approvalStage = stage('approved');
+          const routeTarget = approvalStage.branches[profile.routes.approved];
+          const routeHandler = stage(routeTarget).handler;
+          if (routeHandler === 'assignment' || routeHandler === 'pull-request') {
+            if (assignedInRepo >= maxPerRepo) continue;
+            if (inFlightCount + assignedInRepo >= maxInFlightPerRepo) {
+              console.log(`#${issue.number}: in-flight cap reached (${maxInFlightPerRepo})`);
+              continue;
+            }
+            console.log(`#${issue.number}: approved by ${approval.actor} (${profile.name} profile)`);
+            const alreadyAssigned = (issue.assignees || []).some(assignee =>
+              ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
+            );
+            if (!alreadyAssigned) {
+              await upsertProfileInstructions(profile, repo, issue, defaultBranch);
+              await beginImplementation(repo, issue, profile, botIdRef);
+            }
+            await setState(repo, issue, routeTarget);
+            assignedInRepo++;
+            assigned++;
+            console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${profile.implementation.provider}`);
+            continue;
+          }
+
+          // M2: move to curating, then run curation. On failure, roll back to
+          // approved so the item is retried on the next reconciler run.
+          if (routeHandler !== 'curation') {
+            throw new Error(
+              `Profile "${profile.name}" routes approval to unsupported handler "${routeHandler}"`
+            );
+          }
+          console.log(`#${issue.number}: approved by ${approval.actor} → ${routeTarget}`);
+          await setState(repo, issue, routeTarget);
+          try {
+            await curateIssue(repo, issue, issues, repoLabelNames);
+            if (issue.state === 'closed') continue;
+          } catch (error) {
+            core.warning(`Curation failed for ${repo}#${issue.number}: ${error.message}. Rolling back to approved.`);
+            await setState(repo, issue, 'approved');
+          }
           continue;
         }
 
-        const profile = resolveProfile(labels);
-        const approvalStage = stage('approved');
-        const routeTarget = approvalStage.branches[profile.routes.approved];
-        const routeHandler = stage(routeTarget).handler;
-        if (routeHandler === 'assignment' || routeHandler === 'pull-request') {
+        // Recovery: an issue left in `curating` from a previous failed run.
+        if (state === 'curating') {
+          if (!await requireTrustedApproval(repo, issue)) continue;
+          console.log(`#${issue.number}: retrying curation (was stuck in curating)`);
+          try {
+            await curateIssue(repo, issue, issues, repoLabelNames);
+          } catch (error) {
+            core.warning(`Curation retry failed for ${repo}#${issue.number}: ${error.message}.`);
+            // Leave in curating; will retry on the next run.
+          }
+          continue;
+        }
+
+        // Claim and assign a ready item (result of a successful curation pass).
+        if (state === 'ready') {
+          if (!await requireTrustedApproval(repo, issue)) continue;
           if (assignedInRepo >= maxPerRepo) continue;
           if (inFlightCount + assignedInRepo >= maxInFlightPerRepo) {
             console.log(`#${issue.number}: in-flight cap reached (${maxInFlightPerRepo})`);
             continue;
           }
-          console.log(`#${issue.number}: approved by ${approval.actor} (${profile.name} profile)`);
           const alreadyAssigned = (issue.assignees || []).some(assignee =>
             ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
           );
+          console.log(`#${issue.number}: ready → claiming`);
+          const readyProfile = resolveProfile(labels);
+
           if (!alreadyAssigned) {
-            await upsertProfileInstructions(profile, repo, issue, defaultBranch);
-            await beginImplementation(repo, issue, profile, botIdRef);
+            try {
+              await upsertProfileInstructions(readyProfile, repo, issue, defaultBranch);
+            } catch (error) {
+              core.warning(`  implementation instructions failed for ${repo}#${issue.number}: ${error.message}`);
+            }
+            await beginImplementation(repo, issue, readyProfile, botIdRef);
           }
-          await setState(repo, issue, routeTarget);
+
+          await setState(repo, issue, 'claimed');
           assignedInRepo++;
           assigned++;
-          console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${profile.implementation.provider}`);
+          console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${readyProfile.implementation.provider}`);
           continue;
         }
 
-        // M2: move to curating, then run curation. On failure, roll back to
-        // approved so the item is retried on the next reconciler run.
-        if (routeHandler !== 'curation') {
-          throw new Error(
-            `Profile "${profile.name}" routes approval to unsupported handler "${routeHandler}"`
-          );
-        }
-        console.log(`#${issue.number}: approved by ${approval.actor} → ${routeTarget}`);
-        await setState(repo, issue, routeTarget);
-        try {
-          await curateIssue(repo, issue, issues, repoLabelNames);
-        } catch (error) {
-          core.warning(`Curation failed for ${repo}#${issue.number}: ${error.message}. Rolling back to approved.`);
-          await setState(repo, issue, 'approved');
-        }
-        continue;
-      }
-
-      // Recovery: an issue left in `curating` from a previous failed run.
-      if (state === 'curating') {
-        if (!await requireTrustedApproval(repo, issue)) continue;
-        console.log(`#${issue.number}: retrying curation (was stuck in curating)`);
-        try {
-          await curateIssue(repo, issue, issues, repoLabelNames);
-        } catch (error) {
-          core.warning(`Curation retry failed for ${repo}#${issue.number}: ${error.message}.`);
-          // Leave in curating; will retry on the next run.
-        }
-        continue;
-      }
-
-      // Claim and assign a ready item (result of a successful curation pass).
-      if (state === 'ready') {
-        if (!await requireTrustedApproval(repo, issue)) continue;
-        if (assignedInRepo >= maxPerRepo) continue;
-        if (inFlightCount + assignedInRepo >= maxInFlightPerRepo) {
-          console.log(`#${issue.number}: in-flight cap reached (${maxInFlightPerRepo})`);
+        if (state === 'needs-human') {
+          await setState(repo, issue, 'needs-human', { validateTransition: false });
+          pushWaiting({ repo, number: issue.number, title: issue.title });
           continue;
         }
-        const alreadyAssigned = (issue.assignees || []).some(assignee =>
-          ['copilot', 'copilot-swe-agent'].includes(assignee.login.toLowerCase())
-        );
-        console.log(`#${issue.number}: ready → claiming`);
-        const readyProfile = resolveProfile(labels);
 
-        if (!alreadyAssigned) {
-          try {
-            await upsertProfileInstructions(readyProfile, repo, issue, defaultBranch);
-          } catch (error) {
-            core.warning(`  implementation instructions failed for ${repo}#${issue.number}: ${error.message}`);
+        if (state === 'needs-info') {
+          if (hasEnoughDetail(issue)) {
+            console.log(`#${issue.number}: sufficient detail added`);
+            await removeLabel(repo, issue.number, stateLabel('needs-info'), labels);
           }
-          await beginImplementation(repo, issue, readyProfile, botIdRef);
+          continue;
         }
 
-        await setState(repo, issue, 'claimed');
-        assignedInRepo++;
-        assigned++;
-        console.log(`  ${dryRun ? 'would assign' : 'assigned'} ${readyProfile.implementation.provider}`);
-        continue;
-      }
+        if (state !== 'untracked') continue;
 
-      if (state === 'needs-human') {
-        await setState(repo, issue, 'needs-human', { validateTransition: false });
-        waiting.push({ repo, number: issue.number, title: issue.title });
-        continue;
-      }
-
-      if (state === 'needs-info') {
-        if (hasEnoughDetail(issue)) {
-          console.log(`#${issue.number}: sufficient detail added`);
-          await removeLabel(repo, issue.number, stateLabel('needs-info'), labels);
+        if (!hasEnoughDetail(issue)) {
+          console.log(`#${issue.number}: needs more information`);
+          await setState(repo, issue, 'needs-info');
+          await comment(repo, issue.node_id, prompts.needsInfo);
         }
-        continue;
       }
 
-      if (state !== 'untracked') continue;
-
-      if (!hasEnoughDetail(issue)) {
-        console.log(`#${issue.number}: needs more information`);
-        await setState(repo, issue, 'needs-info');
-        await comment(repo, issue.node_id, prompts.needsInfo);
+      const passChanged = [...passStartStates.entries()].some(([issueNumber, startState]) => {
+        const issue = issues.find(candidate => candidate.number === issueNumber);
+        if (!issue || issue.state === 'closed') return false;
+        return currentStateName(repo, issue) !== startState;
+      });
+      if (!passChanged) {
+        passStopReason = 'steady-state';
+        break;
+      }
+      if (repoPass >= immediatePassLimit) {
+        passStopReason = `pass-limit:${immediatePassLimit}`;
+        break;
       }
     }
+    if (repoPass >= immediatePassLimit && passStopReason === 'steady-state') {
+      passStopReason = `pass-limit:${immediatePassLimit}`;
+    }
+    passReports.push({ repo, passes: repoPass, stop: passStopReason });
+    core.info(`${owner}/${repo}: immediate reconcile passes=${repoPass} (${passStopReason})`);
 
     // After triage/approval, advance items already handed off by polling their PR:
     // claimed -> verifying -> in-review -> done, plus keep the PR mergeable (update stale
@@ -1552,6 +1606,9 @@ module.exports = async ({ github, context, core }) => {
   const waitingMessage = sections.length === 0
     ? 'No issues currently need your attention.'
     : sections.join('\n\n');
+  const passSummary = passReports
+    .map(({ repo, passes, stop }) => `• ${repo}: ${passes} pass(es), stop=${stop}`)
+    .join('\n') || '• none';
 
   core.setOutput('waiting_count', String(attentionCount));
   core.setOutput('waiting_message', waitingMessage);
@@ -1563,6 +1620,6 @@ module.exports = async ({ github, context, core }) => {
   core.setOutput('implementation_jobs', JSON.stringify(implementationJobs));
   await core.summary
     .addHeading(`Puppets lifecycle: ${machine.name}`)
-    .addRaw(`Assigned: ${assigned}\n\nNeeds your attention: ${attentionCount}\n\n${waitingMessage}`)
+    .addRaw(`Assigned: ${assigned}\n\nImmediate reconciliation passes:\n${passSummary}\n\nNeeds your attention: ${attentionCount}\n\n${waitingMessage}`)
     .write();
 };
