@@ -91,7 +91,7 @@ inbound controller, external state store, or broad cross-repository token.
   <text class="map-runtime-number" x="633" y="455">3</text>
   <text class="map-runtime-label" x="633" y="480">Check result</text>
   <text class="map-zone-note" x="535" y="535" text-anchor="middle">
-    Reads state, takes one safe step, writes the result back
+    Reads state, takes bounded safe steps, writes the result back
   </text>
 
   <rect class="map-zone" x="760" y="150" width="320" height="300" rx="22"/>
@@ -173,7 +173,7 @@ inbound controller, external state store, or broad cross-repository token.
   <li>
     <strong>Reconcile labels and state.</strong>
     The runtime derives current state from GitHub, verifies approval provenance, and takes
-    at most the next allowed step.
+    all immediately allowed steps (bounded per run) until no further safe transition is available.
   </li>
   <li>
     <strong>Publish an auditable summary.</strong>

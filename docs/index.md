@@ -35,8 +35,8 @@ triggers, permissions, credentials, provider selection, and local policy.
 ## From issue to reviewed pull request
 
 Puppets is a gated lifecycle, not a fire-and-forget agent assignment. GitHub labels carry
-the durable state, while a small scheduled workflow repeatedly reconciles the next safe
-step.
+the durable state, while a small scheduled workflow repeatedly reconciles immediate safe
+steps (bounded per run).
 
 1. **An issue is filed.** A deterministic check asks for more information when the report
    is too thin. No model runs yet.

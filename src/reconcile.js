@@ -1378,6 +1378,7 @@ module.exports = async ({ github, context, core }) => {
     const issues = await github.paginate(github.rest.issues.listForRepo, {
       owner, repo, state: 'open', sort: 'updated', direction: 'desc', per_page: 100,
     });
+    const issueByNumber = new Map(issues.map(issue => [issue.number, issue]));
     const trackedPrByNumber = new Map();
     for (const state of trackedPrLabels) {
       const tracked = await github.paginate(github.rest.issues.listForRepo, {
@@ -1535,7 +1536,9 @@ module.exports = async ({ github, context, core }) => {
         }
 
         if (state === 'needs-human') {
-          await setState(repo, issue, 'needs-human', { validateTransition: false });
+          if (!waitingKeys.has(issueKey)) {
+            await setState(repo, issue, 'needs-human', { validateTransition: false });
+          }
           pushWaiting({ repo, number: issue.number, title: issue.title });
           continue;
         }
@@ -1558,7 +1561,7 @@ module.exports = async ({ github, context, core }) => {
       }
 
       const passChanged = [...passStartStates.entries()].some(([issueNumber, startState]) => {
-        const issue = issues.find(candidate => candidate.number === issueNumber);
+        const issue = issueByNumber.get(issueNumber);
         if (!issue || issue.state === 'closed') return false;
         return currentStateName(repo, issue) !== startState;
       });
@@ -1570,9 +1573,6 @@ module.exports = async ({ github, context, core }) => {
         passStopReason = `pass-limit:${immediatePassLimit}`;
         break;
       }
-    }
-    if (repoPass >= immediatePassLimit && passStopReason === 'steady-state') {
-      passStopReason = `pass-limit:${immediatePassLimit}`;
     }
     passReports.push({ repo, passes: repoPass, stop: passStopReason });
     core.info(`${owner}/${repo}: immediate reconcile passes=${repoPass} (${passStopReason})`);
