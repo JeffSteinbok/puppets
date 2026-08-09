@@ -33,7 +33,7 @@ assignment, and pull-request reconciliation.
 ## Workflow DSL
 
 Puppets compiles a versioned workflow definition before it performs any mutation. The
-built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml)
+built-in [`basic` workflow](https://github.com/JeffSteinbok/puppets/blob/main/config/basic-workflow.yml)
 declares named stages, handler kinds, outcome branches, labels, and profiles.
 
 Create `.puppets/workflow.yml` to overlay it. Named stages, profiles, control-label roles,
@@ -112,9 +112,9 @@ procedure.
   <nav class="file-explorer-tree" aria-label="Puppets configuration files">
     <div class="file-tree-root">puppets/</div>
     <button type="button" class="file-tree-item is-active"
-      data-file-name="config/workflow.yml"
-      data-file-url="https://raw.githubusercontent.com/JeffSteinbok/puppets/main/config/workflow.yml">
-      <span aria-hidden="true">◇</span> config/workflow.yml
+      data-file-name="config/basic-workflow.yml"
+      data-file-url="https://raw.githubusercontent.com/JeffSteinbok/puppets/main/config/basic-workflow.yml">
+      <span aria-hidden="true">◇</span> config/basic-workflow.yml
     </button>
     <div class="file-tree-root">caller repository/</div>
     <button type="button" class="file-tree-item"
@@ -135,10 +135,10 @@ procedure.
   </nav>
   <section class="file-explorer-view" aria-live="polite">
     <header class="file-explorer-toolbar">
-      <code data-file-explorer-name>config/workflow.yml</code>
+      <code data-file-explorer-name>config/basic-workflow.yml</code>
       <div>
         <a data-file-explorer-open
-          href="https://github.com/JeffSteinbok/puppets/blob/main/config/workflow.yml">
+          href="https://github.com/JeffSteinbok/puppets/blob/main/config/basic-workflow.yml">
           Open
         </a>
         <button type="button" data-file-explorer-copy>Copy</button>
