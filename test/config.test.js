@@ -20,10 +20,10 @@ const {
 } = require('../src/workflow');
 
 const workflowSource = fs.readFileSync(
-  path.join(__dirname, '..', 'config', 'workflow.yml'),
+  path.join(__dirname, '..', 'config', 'basic-workflow.yml'),
   'utf8'
 );
-const workflowDefinition = parseWorkflow(workflowSource, 'config/workflow.yml');
+const workflowDefinition = parseWorkflow(workflowSource, 'config/basic-workflow.yml');
 
 test('arrays replace while ordinary objects merge by key', () => {
   assert.deepEqual(
@@ -124,7 +124,7 @@ test('local configuration and workflow overlay are resolved', () => {
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
   fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
-    path.join(frameworkRoot, 'config', 'workflow.yml'),
+    path.join(frameworkRoot, 'config', 'basic-workflow.yml'),
     workflowSource
   );
   fs.writeFileSync(
@@ -159,7 +159,7 @@ test('unknown local configuration fails closed', () => {
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
   fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
   fs.writeFileSync(
-    path.join(frameworkRoot, 'config', 'workflow.yml'),
+    path.join(frameworkRoot, 'config', 'basic-workflow.yml'),
     workflowSource
   );
   fs.writeFileSync(
@@ -186,7 +186,7 @@ test('claudeModel and codexModel default to empty strings and may be overridden'
   const callerRoot = path.join(root, 'caller');
   fs.mkdirSync(path.join(frameworkRoot, 'config'), { recursive: true });
   fs.mkdirSync(path.join(callerRoot, '.puppets'), { recursive: true });
-  fs.writeFileSync(path.join(frameworkRoot, 'config', 'workflow.yml'), workflowSource);
+  fs.writeFileSync(path.join(frameworkRoot, 'config', 'basic-workflow.yml'), workflowSource);
   fs.writeFileSync(
     path.join(callerRoot, '.puppets', 'config.json'),
     JSON.stringify({

@@ -83,7 +83,9 @@ function validateConfig(config) {
 }
 
 function resolveConfiguration({ frameworkRoot, callerRoot }) {
-  const baseWorkflow = readWorkflowIfPresent(path.join(frameworkRoot, 'config', 'workflow.yml'));
+  const baseWorkflow = readWorkflowIfPresent(
+    path.join(frameworkRoot, 'config', 'basic-workflow.yml')
+  );
   const workflowOverlay = readWorkflowIfPresent(
     path.join(callerRoot, '.puppets', 'workflow.yml')
   );

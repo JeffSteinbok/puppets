@@ -12,8 +12,8 @@ const {
 } = require('../src/workflow');
 
 const definition = parseWorkflow(
-  fs.readFileSync(path.join(__dirname, '..', 'config', 'workflow.yml'), 'utf8'),
-  'config/workflow.yml'
+  fs.readFileSync(path.join(__dirname, '..', 'config', 'basic-workflow.yml'), 'utf8'),
+  'config/basic-workflow.yml'
 );
 
 test('state controller follows compiled custom labels and branches', async () => {
