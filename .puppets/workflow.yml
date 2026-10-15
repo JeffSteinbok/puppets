@@ -6,6 +6,11 @@ spec:
         description: Use Claude Code for issue implementation.
 
   profiles:
+    # Implement approved issues with Claude Code by default.
+    - name: basic
+      implementation:
+        provider: claude
+
     - name: claude-test
       default: false
       priority: 100
