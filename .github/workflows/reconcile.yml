@@ -248,6 +248,9 @@ jobs:
         env:
           PUPPETS_BRANCH: ${{ matrix.branch }}
         run: |
+          # The framework checkout is nested inside the caller workspace; keep it out of the
+          # provider's and the finalizer's `git add -A` so it is never committed as a gitlink.
+          echo '/.puppets-framework/' >> .git/info/exclude
           if git ls-remote --exit-code --heads origin "$PUPPETS_BRANCH" >/dev/null 2>&1; then
             git fetch origin "$PUPPETS_BRANCH"
             git checkout -B "$PUPPETS_BRANCH" "origin/$PUPPETS_BRANCH"
